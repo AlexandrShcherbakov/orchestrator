@@ -144,6 +144,32 @@ def gather_techlead_context(repo: Path) -> dict[str, str]:
 
   return context
 
+def gather_task_context(repo: Path, task: Task) -> dict[str, str]:
+  """Собирает контекст для выполнения задачи: информация о задаче + facts."""
+  context = {}
+
+  # Добавляем facts
+  facts_path = repo / "docs" / "knowledge" / "facts.md"
+  if facts_path.exists():
+    try:
+      content = facts_path.read_text(encoding="utf-8")
+      context["knowledge/facts.md"] = content
+    except Exception as e:
+      print(f"[warning] Could not read {facts_path}: {e}")
+
+  # Добавляем информацию о задаче
+  task_info = f"""Task Information:
+ID: {task.id}
+Title: {task.title}
+Description: {task.description}
+Dependencies: {', '.join(task.deps) if task.deps else 'None'}
+Type: {task.type}
+Status: {task.status}
+"""
+  context["current_task.md"] = task_info
+
+  return context
+
 def get_user_goal_and_requirements() -> dict[str, str]:
   """Получает от пользователя описание задачи простым текстом."""
   print("\n" + "=" * 60)
@@ -482,9 +508,15 @@ def main() -> int:
       run=_create_branch
     ))
 
-    facts = (repo / "docs" / "knowledge" / "facts.md").read_text(encoding="utf-8")
+    # Gather task info + facts
+    task_context = gather_task_context(repo, task)
+    log.write_json("task_context.json", {
+      "files": list(task_context.keys()),
+      "task_id": task.id,
+      "task_title": task.title
+    })
+    print(f"[OK] Task context gathered with {len(task_context)} files")
 
-    # TODO: Gather task info + facts.
     # TODO: Init X (3 by default) Tester agents with this context. They should ask for more context if needed.
     # TODO: Extend Tester contexts they ask.
     # TODO: Get code for new tests from Testers. Apply to repo.
@@ -504,7 +536,8 @@ def main() -> int:
 
     def _tester_step():
       llm = LLM(LLMConfig(model="gpt-4o-mini", max_output_tokens=1200))
-      raw = run_tester(llm, repo, task.id, task.title, task.description, facts, log)
+      facts_text = task_context.get("knowledge/facts.md", "")
+      raw = run_tester(llm, repo, task.id, task.title, task.description, facts_text, log)
       tester_yaml_holder["raw"] = raw
       return {"status": "proposed"}
 
