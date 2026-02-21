@@ -1,4 +1,5 @@
 import argparse
+from logging import log
 from pathlib import Path
 import sys
 from dataclasses import dataclass
@@ -7,6 +8,9 @@ from typing import Any
 import yaml
 
 from orchestrator.git_ops import head_sha, is_clean, branch_exists, checkout_new_branch, current_branch
+from orchestrator.logging import make_task_log_dir
+from orchestrator.steps import Step, run_step
+
 
 def parse_args() -> argparse.Namespace:
   p = argparse.ArgumentParser(prog="orchestrator")
@@ -124,28 +128,46 @@ def main() -> int:
       print("[ok] no ready tasks")
       return 0
 
-    print(f"[ok] picked task: {task.id} | {task.title}")
-    print("----- description -----")
-    print(task.description)
+    log = make_task_log_dir(repo, task.id)
+    log.write_json("task.json", {
+        "id": task.id,
+        "title": task.title,
+        "deps": task.deps,
+        "type": task.type,
+    })
 
-    prompt_next(args.interactive, "create task branch (dry-run)")
-    print(f"[ok] HEAD: {head_sha(repo)}")
-    print(f"[ok] branch: {current_branch(repo)}")
+    steps: list[Step] = []
 
-    if not is_clean(repo):
-      print("[error] working tree is not clean. Commit/stash changes first.")
-      return 4
+    steps.append(Step(
+      name="git_precheck",
+      actor="orchestrator",
+      context_summary="Ensure working tree clean; record HEAD and current branch.",
+      run=lambda: {
+        "head": head_sha(repo),
+        "branch": current_branch(repo),
+        "clean": is_clean(repo),
+      }
+    ))
 
-    branch_name = f"task/{task.id}"
-    print(f"[plan] create and checkout branch: {branch_name}")
+    def _create_branch():
+      if not is_clean(repo):
+        raise SystemExit(4)
+      branch_name = f"task/{task.id}"
+      if branch_exists(repo, branch_name):
+        raise SystemExit(5)
+      checkout_new_branch(repo, branch_name)
+      return {"now_on": current_branch(repo), "branch": branch_name}
 
-    prompt_next(args.interactive, "git: create+checkout branch")
-    if branch_exists(repo, branch_name):
-      print(f"[error] branch already exists: {branch_name}")
-      return 5
+    steps.append(Step(
+      name="git_create_branch",
+      actor="orchestrator",
+      context_summary=f"Create and checkout branch task/{task.id}.",
+      run=_create_branch
+    ))
 
-    checkout_new_branch(repo, branch_name)
-    print(f"[ok] now on branch: {current_branch(repo)}")
+    total = len(steps)
+    for i, s in enumerate(steps, start=1):
+      run_step(s, log, args.interactive, i, total)
 
     return 0
 
