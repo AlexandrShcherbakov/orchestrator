@@ -1,0 +1,11 @@
+checks:
+  - name: format
+    cmd: ["python", "-m", "black", "."]
+  - name: lint
+    cmd: ["python", "-m", "ruff", "check", "."]
+  - name: typecheck
+    cmd: ["python", "-m", "mypy", "."]
+  - name: tests
+    cmd: ["python", "-m", "pytest", "-q"]
+  - name: build
+    cmd: ["python", "-m", "pip", "--version"]   # временный placeholder
