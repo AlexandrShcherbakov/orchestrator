@@ -400,7 +400,36 @@ def main() -> int:
     log.write_text("techlead_proposal.yaml", techlead_proposal)
     print("[OK] TechLead analysis complete")
 
-    # TODO: TechLead only modifies backlog and architecture md files and makes a commit.
+    # Apply TechLead proposal and commit
+    print("[STEP 9] Applying TechLead proposal...")
+    try:
+      # Parse and validate the techlead proposal
+      proposal = parse_proposal_yaml(techlead_proposal)
+      validate_docs_only(repo, proposal)
+
+      # Apply the proposal changes
+      written_files = apply_proposal(repo, proposal)
+      log.write_json("techlead_applied_proposal.json", {
+        "written_files": written_files,
+        "total_files": len(written_files)
+      })
+
+      print(f"[OK] Applied TechLead changes to {len(written_files)} files:")
+      for file_path in written_files:
+        print(f"  - {file_path}")
+
+      # Create commit for techlead changes
+      add_all(repo)
+      commit_message = f"TECHLEAD: Break down tasks into subtasks\\n\\nApplied {len(written_files)} file changes from techlead proposal"
+      commit(repo, commit_message)
+
+      print(f"[OK] Created TechLead commit on branch {current_branch(repo)}")
+      log.write_text("techlead_commit_message.txt", commit_message)
+
+    except Exception as e:
+      print(f"[ERROR] Failed to apply techlead proposal: {e}")
+      log.write_text("techlead_proposal_error.txt", str(e))
+      return 6
 
     steps: list[Step] = []
 
