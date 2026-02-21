@@ -1,0 +1,4 @@
+- Orchestrator is an external Python CLI tool and operates on this repo via --repo.
+- Max change per task: <= 300 LOC diff.
+- Work unit: 1 task = 1 branch = 1 squash commit (user pushes/merges).
+- logs/ is not committed.

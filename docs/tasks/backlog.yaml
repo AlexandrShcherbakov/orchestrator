@@ -1,0 +1,21 @@
+- id: ORCH-001
+  title: "Bootstrap repo contract and dry-run pipeline"
+  description: |
+    Goal: validate orchestrator against this repository.
+
+    Deliverables:
+    1) Ensure project contract files exist:
+       - docs/knowledge/facts.md
+       - docs/tasks/backlog.yaml
+       - docs/tasks/done.yaml
+       - docs/tasks/problems.yaml
+    2) Run: orchestrator --repo . bootstrap
+    3) Run: orchestrator --repo . run --interactive
+       - Should pick ORCH-001
+       - Should create and checkout branch task/ORCH-001
+       - Should create logs under logs/task_ORCH-001/<timestamp>/*
+    4) No code changes in the project besides docs/tasks and facts.
+  deps: []
+  status: ready
+  type: chore
+
