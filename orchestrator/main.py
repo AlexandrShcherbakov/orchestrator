@@ -1,4 +1,5 @@
 import argparse
+import datetime
 from pathlib import Path
 import sys
 from dataclasses import dataclass
@@ -6,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from orchestrator.proposals import parse_proposal_yaml, validate_docs_only
+from orchestrator.apply import apply_proposal
 from orchestrator.git_ops import diff_numstat, head_sha, is_clean, branch_exists, checkout_new_branch, current_branch, add_all, commit
 from orchestrator.task_logging import make_task_log_dir
 from orchestrator.steps import Step, run_step
@@ -97,6 +100,14 @@ def check_project_contract(repo: Path) -> None:
       print(f"  missing: {p.relative_to(repo)}", file=sys.stderr)
     raise SystemExit(3)
 
+def prompt_apply(interactive: bool) -> str:
+  if not interactive:
+    return "apply"
+  while True:
+    cmd = input("command (apply/skip/abort): ").strip().lower()
+    if cmd in ("apply", "skip", "abort"):
+      return cmd
+
 def main() -> int:
   args = parse_args()
   repo = Path(args.repo).expanduser().resolve()
@@ -147,6 +158,70 @@ def main() -> int:
       run_step(s, log, args.interactive, i, total)
 
     print(f"[ok] bootstrap complete. logs at: {log.root}")
+
+    raw = (log.root / "architect_bootstrap_raw.yaml").read_text(encoding="utf-8")
+    proposal = parse_proposal_yaml(raw)
+    validate_docs_only(repo, proposal)
+
+    log.write_json("proposal_summary.json", {
+      "files": [f.path for f in proposal.files],
+      "problems": proposal.problems,
+    })
+    print("[proposal] files:")
+    for f in proposal.files:
+      print(" ", f.path)
+    if proposal.problems:
+      print("[proposal] problems:")
+      for q in proposal.problems:
+        print(" -", q)
+
+    if proposal.problems:
+      for q in proposal.problems:
+        append_problem(repo, "BOOTSTRAP", q, blocking=True)
+      print("[stop] architect reported problems -> recorded in docs/tasks/problems.yaml")
+      return 8
+
+    choice = prompt_apply(args.interactive)
+    if choice == "skip":
+      print("[ok] skipped applying proposal")
+      return 0
+    if choice == "abort":
+      raise SystemExit(130)
+
+    if not is_clean(repo):
+      print("[error] working tree not clean")
+      return 4
+
+    bname = "bootstrap/" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if branch_exists(repo, bname):
+      print("[error] branch exists:", bname)
+      return 5
+    checkout_new_branch(repo, bname)
+    log.write_text("bootstrap_branch.txt", bname)
+
+    written = apply_proposal(repo, proposal)
+    log.write_json("applied_files.json", {"written": written})
+
+    cfg = load_project_config(repo)
+    failed = []
+    for c in cfg.checks:
+      try:
+        res = run_cmd(repo, c.cmd)
+        log.write_text(f"bootstrap_check_{c.name}_stdout.txt", res.stdout)
+        log.write_text(f"bootstrap_check_{c.name}_stderr.txt", res.stderr)
+      except CmdError as e:
+        log.write_text(f"bootstrap_check_{c.name}_stdout.txt", e.result.stdout)
+        log.write_text(f"bootstrap_check_{c.name}_stderr.txt", e.result.stderr)
+        failed.append(c.name)
+
+    if failed:
+      append_problem(repo, "BOOTSTRAP", "Bootstrap checks failed: " + ", ".join(failed), blocking=True)
+      print("[stop] checks failed -> recorded in docs/tasks/problems.yaml")
+      return 6
+
+    add_all(repo)
+    commit(repo, "BOOTSTRAP: update docs")
+    print("[ok] bootstrap committed on", current_branch(repo))
     return 0
   elif args.cmd == "run":
     backlog = repo / "docs" / "tasks" / "backlog.yaml"
