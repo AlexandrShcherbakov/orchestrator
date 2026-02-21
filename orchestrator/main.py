@@ -16,7 +16,7 @@ from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError
 from orchestrator.tasks_io import append_problem, append_done
 from orchestrator.llm import LLM, LLMConfig
-from orchestrator.agents.architect import run_architect_bootstrap
+from orchestrator.agents.architect import run_architect_bootstrap, create_architect_context
 
 
 def parse_args() -> argparse.Namespace:
@@ -165,7 +165,20 @@ def main() -> int:
     for file_path in sorted(docs_content.keys()):
       print(f"  - {file_path}")
 
-    # TODO: Init Architect agent with this context.
+    # Init Architect agent with this context
+    print("[STEP 2] Initializing Architect agent with documentation context...")
+
+    # Create context object with all gathered documentation
+    architect_context = create_architect_context(docs_content, repo)
+
+    # Log the architect context for debugging
+    log.write_json("architect_context.json", {
+        "total_docs": architect_context.total_docs,
+        "repo_path": architect_context.repo_path,
+        "doc_files": list(architect_context.docs_content.keys())
+    })
+
+    print(f"[OK] Architect context initialized with {architect_context.total_docs} documents")
     # TODO: Get prompt from user input about current goal and requirements.
     # TODO: Run Architect to get proposal for updating docs/architecture and backlog. Response of the Architect should contain changes in docs + list of tasks. If the architect has any questions, it should ask user, get answers and re-run until it has no more questions.
     # TODO: Notify user about proposed changes and tasks, ask for confirmation to apply.

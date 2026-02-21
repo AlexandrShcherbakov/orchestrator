@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict
 from orchestrator.llm import LLM
 from orchestrator.task_logging import TaskLog
 
@@ -8,6 +9,21 @@ from orchestrator.task_logging import TaskLog
 class BootstrapResult:
   updated_files: list[str]
   problems: list[str]
+
+@dataclass(frozen=True)
+class ArchitectContext:
+  """Контекст для работы архитектора с расширенной документацией."""
+  docs_content: Dict[str, str]  # Имя файла -> содержимое
+  repo_path: str
+  total_docs: int
+
+def create_architect_context(docs_content: Dict[str, str], repo: Path) -> ArchitectContext:
+  """Создает контекст архитектора с собранной документацией."""
+  return ArchitectContext(
+    docs_content=docs_content,
+    repo_path=str(repo),
+    total_docs=len(docs_content)
+  )
 
 SYSTEM = """You are ArchitectBootstrap.
 Rules:
