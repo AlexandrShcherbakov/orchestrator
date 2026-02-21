@@ -128,6 +128,21 @@ def gather_docs_and_architecture(repo: Path) -> dict[str, str]:
 
   return docs_content
 
+def gather_techlead_context(repo: Path) -> dict[str, str]:
+  """Собирает контекст для техлида: документация + backlog."""
+  context = gather_docs_and_architecture(repo)
+
+  # Добавляем backlog
+  backlog_path = repo / "docs" / "tasks" / "backlog.yaml"
+  if backlog_path.exists():
+    try:
+      content = backlog_path.read_text(encoding="utf-8")
+      context["tasks/backlog.yaml"] = content
+    except Exception as e:
+      print(f"[warning] Could not read {backlog_path}: {e}")
+
+  return context
+
 def get_user_goal_and_requirements() -> dict[str, str]:
   """Получает от пользователя описание задачи простым текстом."""
   print("\n" + "=" * 60)
@@ -365,8 +380,12 @@ def main() -> int:
       print(f"[ERROR] Failed to apply proposal: {e}")
       log.write_text("proposal_error.txt", str(e))
       return 6
-    # TODO: Gather current docs, information about architecture based on all md files also add current backlog.
-    # TODO: Init TechLead agent with this context.
+
+    # Gather context for TechLead
+    print("[STEP 7] Gathering context for TechLead...")
+    techlead_context = gather_techlead_context(repo)
+    print(f"[OK] TechLead context gathered with {len(techlead_context)} files including backlog")
+
     # TODO: TechLeads should generate subtasks for each task if it is necessary. We require small commits (less than 300 changed lines).
     # TODO: TechLead only modifies backlog and architecture md files and makes a commit.
 
