@@ -18,12 +18,14 @@ from orchestrator.tasks_io import append_problem, append_done
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.agents.architect import create_architect_context, run_architect_with_context
 from orchestrator.agents.techlead import run_techlead, create_techlead_context
+from orchestrator.agents.tester import run_tester
 
 
 def parse_args() -> argparse.Namespace:
   p = argparse.ArgumentParser(prog="orchestrator")
   p.add_argument("--repo", required=True)
   p.add_argument("--interactive", action="store_true")
+  p.add_argument("--tester-count", type=int, default=3, help="Number of tester agents to run (default: 3)")
 
   sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -517,7 +519,34 @@ def main() -> int:
     })
     print(f"[OK] Task context gathered with {len(task_context)} files")
 
-    # TODO: Init X (3 by default) Tester agents with this context. They should ask for more context if needed.
+    # Init multiple Tester agents with task context
+    tester_count = getattr(args, 'tester_count', 3)
+    tester_results = []
+
+    def _tester_step():
+      llm = LLM(LLMConfig(model="gpt-4o-mini", max_output_tokens=1200))
+      facts_text = task_context.get("knowledge/facts.md", "")
+
+      print(f"[Running {tester_count} tester agents...]")
+      all_results = []
+
+      for i in range(tester_count):
+        print(f"  - Running tester agent {i+1}/{tester_count}...")
+        raw = run_tester(llm, repo, task.id, task.title, task.description, facts_text, log)
+        log.write_text(f"tester_{i+1}_raw.yaml", raw)
+        all_results.append(raw)
+
+      # Combine all tester results - for now just take the first non-empty one
+      # TODO: Better merging strategy for multiple tester outputs
+      final_result = ""
+      for result in all_results:
+        if result.strip():
+          final_result = result
+          break
+
+      tester_results.extend(all_results)
+      return {"status": "proposed", "tester_count": tester_count}
+
     # TODO: Extend Tester contexts they ask.
     # TODO: Get code for new tests from Testers. Apply to repo.
     # TODO: Init X (3 by default) Developer agents with same context as testers + info about proposed tests. They should propose code changes to implement the task and make tests pass. Apply to repo.
@@ -532,24 +561,24 @@ def main() -> int:
     # TODO: If all good, commit with message "{task.id}: {task.title}".
     # TODO: Start with the next ready task.
 
-    tester_yaml_holder = {"raw": ""}
-
-    def _tester_step():
-      llm = LLM(LLMConfig(model="gpt-4o-mini", max_output_tokens=1200))
-      facts_text = task_context.get("knowledge/facts.md", "")
-      raw = run_tester(llm, repo, task.id, task.title, task.description, facts_text, log)
-      tester_yaml_holder["raw"] = raw
-      return {"status": "proposed"}
-
     steps.append(Step(
       name="tester_generate",
       actor="tester",
-      context_summary="Generate test proposal (allowed: tests/, docs/tests/).",
+      context_summary=f"Generate test proposal using {tester_count} tester agents (allowed: tests/, docs/tests/).",
       run=_tester_step
     ))
 
     def _apply_tests():
-      raw = tester_yaml_holder["raw"]
+      # Use the first non-empty result from tester agents
+      raw = ""
+      for result in tester_results:
+        if result.strip():
+          raw = result
+          break
+
+      if not raw:
+        raise ValueError("No valid tester results found")
+
       proposal = parse_proposal_yaml(raw)  # уже умеет strip fences
       validate_allowed_prefixes(repo, proposal, ["tests", "docs/tests"])
       written = apply_proposal(repo, proposal)
