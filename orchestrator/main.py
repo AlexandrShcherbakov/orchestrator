@@ -318,7 +318,53 @@ def main() -> int:
 
     print("[OK] User confirmed the proposal")
     log.write_text("user_decision.txt", "CONFIRMED")
-    # TODO: If confirmed, make a commit for these changes.
+
+    # If confirmed, make a commit for these changes
+    print("[STEP 6] Applying architect proposal and creating commit...")
+
+    try:
+      # Parse and validate the proposal
+      proposal = parse_proposal_yaml(proposal_yaml)
+      validate_docs_only(repo, proposal)
+
+      # Check if working tree is clean
+      if not is_clean(repo):
+        print("[ERROR] Working tree not clean - cannot apply proposal")
+        return 4
+
+      # Create new branch for bootstrap changes
+      bname = "bootstrap/architect/" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+      if branch_exists(repo, bname):
+        print(f"[ERROR] Branch already exists: {bname}")
+        return 5
+
+      checkout_new_branch(repo, bname)
+      log.write_text("bootstrap_branch.txt", bname)
+      print(f"[OK] Created and checked out branch: {bname}")
+
+      # Apply the proposal changes
+      written_files = apply_proposal(repo, proposal)
+      log.write_json("applied_proposal.json", {
+        "written_files": written_files,
+        "total_files": len(written_files)
+      })
+
+      print(f"[OK] Applied changes to {len(written_files)} files:")
+      for file_path in written_files:
+        print(f"  - {file_path}")
+
+      # Create commit
+      add_all(repo)
+      commit_message = f"ARCHITECT: Apply user request\\n\\nApplied {len(written_files)} file changes from architect proposal"
+      commit(repo, commit_message)
+
+      print(f"[OK] Created commit on branch {current_branch(repo)}")
+      log.write_text("architect_commit_message.txt", commit_message)
+
+    except Exception as e:
+      print(f"[ERROR] Failed to apply proposal: {e}")
+      log.write_text("proposal_error.txt", str(e))
+      return 6
     # TODO: Gather current docs, information about architecture based on all md files also add current backlog.
     # TODO: Init TechLead agent with this context.
     # TODO: TechLeads should generate subtasks for each task if it is necessary. We require small commits (less than 300 changed lines).
