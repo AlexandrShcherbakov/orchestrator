@@ -128,6 +128,34 @@ def gather_docs_and_architecture(repo: Path) -> dict[str, str]:
 
   return docs_content
 
+def get_user_goal_and_requirements() -> dict[str, str]:
+  """Получает от пользователя описание задачи простым текстом."""
+  print("\n" + "=" * 60)
+  print("ARCHITECT TASK DESCRIPTION")
+  print("=" * 60)
+
+  print("\nPlease describe what you want to implement or change:")
+  print("(You can write as much detail as you need)")
+  print("-" * 40)
+
+  # Собираем многострочный ввод
+  lines = []
+  print("Enter your task description (press Enter twice to finish):")
+  while True:
+    line = input("").strip()
+    if line == "" and lines:  # Пустая строка после ввода текста - конец
+      break
+    if line != "":  # Игнорируем пустые строки в начале
+      lines.append(line)
+
+  task_description = "\n".join(lines).strip()
+
+  if not task_description:
+    print("Task description cannot be empty. Please try again...")
+    return get_user_goal_and_requirements()
+
+  return {"task_description": task_description}
+
 def main() -> int:
   args = parse_args()
   repo = Path(args.repo).expanduser().resolve()
@@ -179,7 +207,15 @@ def main() -> int:
     })
 
     print(f"[OK] Architect context initialized with {architect_context.total_docs} documents")
-    # TODO: Get prompt from user input about current goal and requirements.
+
+    # Get prompt from user input about current goal and requirements
+    print("[STEP 3] Getting user input about goals and requirements...")
+    user_input = get_user_goal_and_requirements()
+
+    # Log user input for debugging and tracking
+    log.write_json("user_requirements.json", user_input)
+
+    print(f"[OK] User task description captured ({len(user_input['task_description'])} characters)")
     # TODO: Run Architect to get proposal for updating docs/architecture and backlog. Response of the Architect should contain changes in docs + list of tasks. If the architect has any questions, it should ask user, get answers and re-run until it has no more questions.
     # TODO: Notify user about proposed changes and tasks, ask for confirmation to apply.
     # TODO: If confirmed, make a commit for these changes.
