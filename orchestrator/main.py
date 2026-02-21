@@ -156,6 +156,69 @@ def get_user_goal_and_requirements() -> dict[str, str]:
 
   return {"task_description": task_description}
 
+def show_architect_proposal(proposal_yaml: str, log) -> None:
+  """Показывает пользователю предложения архитектора."""
+  try:
+    import yaml
+    proposal_data = yaml.safe_load(proposal_yaml)
+  except Exception as e:
+    print(f"[ERROR] Failed to parse proposal YAML: {e}")
+    return
+
+  print("\n" + "=" * 70)
+  print("ARCHITECT PROPOSAL SUMMARY")
+  print("=" * 70)
+
+  # Показываем предложенные изменения
+  proposed_changes = proposal_data.get("proposed_changes", [])
+  if proposed_changes:
+    print(f"\nПРЕДЛОЖЕННЫЕ ИЗМЕНЕНИЯ ({len(proposed_changes)} files):")
+    for i, change in enumerate(proposed_changes, 1):
+      file_path = change.get("path", "Unknown")
+      content = change.get("content", "")
+      print(f"  {i}. {file_path} ({len(content)} characters)")
+
+  # Показываем новые задачи
+  tasks = proposal_data.get("tasks", [])
+  if tasks:
+    print(f"\nНОВЫЕ ЗАДАЧИ ({len(tasks)} tasks):")
+    for i, task in enumerate(tasks, 1):
+      task_id = task.get("id", "UNKNOWN")
+      title = task.get("title", "Untitled")
+      task_type = task.get("type", "unknown")
+      status = task.get("status", "unknown")
+      print(f"  {i}. [{task_id}] {title} (type: {task_type}, status: {status})")
+
+      description = task.get("description", "")
+      if description:
+        # Показываем краткое описание
+        desc_preview = description[:100] + "..." if len(description) > 100 else description
+        print(f"     {desc_preview}")
+
+  # Показываем проблемы (если есть)
+  problems = proposal_data.get("problems", [])
+  if problems:
+    print(f"\nОБНАРУЖЕННЫЕ ПРОБЛЕМЫ ({len(problems)}):")
+    for i, problem in enumerate(problems, 1):
+      print(f"  {i}. {problem}")
+
+  print("\n" + "=" * 70)
+
+def get_user_confirmation_for_proposal() -> bool:
+  """Запрашивает подтверждение пользователя на применение предложений."""
+  print("\nDo you want to apply these changes?")
+  print("  [y] Yes, apply all changes and create commit")
+  print("  [n] No, skip this proposal")
+
+  while True:
+    choice = input("\nYour choice (y/n): ").strip().lower()
+    if choice in ('y', 'yes'):
+      return True
+    elif choice in ('n', 'no'):
+      return False
+    else:
+      print("Please enter 'y' for yes or 'n' for no.")
+
 def main() -> int:
   args = parse_args()
   repo = Path(args.repo).expanduser().resolve()
@@ -240,7 +303,21 @@ def main() -> int:
 
     # Parse the final proposal
     proposal_yaml = architect_result.proposal_yaml
-    # TODO: Notify user about proposed changes and tasks, ask for confirmation to apply.
+
+    # Notify user about proposed changes and tasks, ask for confirmation to apply
+    print("[STEP 5] Presenting architect proposal to user...")
+    show_architect_proposal(proposal_yaml, log)
+
+    # Get user confirmation
+    user_confirmed = get_user_confirmation_for_proposal()
+
+    if not user_confirmed:
+      print("[CANCELLED] User declined the proposal")
+      log.write_text("user_decision.txt", "DECLINED")
+      return 0
+
+    print("[OK] User confirmed the proposal")
+    log.write_text("user_decision.txt", "CONFIRMED")
     # TODO: If confirmed, make a commit for these changes.
     # TODO: Gather current docs, information about architecture based on all md files also add current backlog.
     # TODO: Init TechLead agent with this context.
