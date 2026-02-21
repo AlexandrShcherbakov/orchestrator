@@ -16,7 +16,7 @@ from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError
 from orchestrator.tasks_io import append_problem, append_done
 from orchestrator.llm import LLM, LLMConfig
-from orchestrator.agents.architect import run_architect_bootstrap, create_architect_context
+from orchestrator.agents.architect import run_architect_bootstrap, create_architect_context, run_architect_with_context
 
 
 def parse_args() -> argparse.Namespace:
@@ -216,7 +216,30 @@ def main() -> int:
     log.write_json("user_requirements.json", user_input)
 
     print(f"[OK] User task description captured ({len(user_input['task_description'])} characters)")
-    # TODO: Run Architect to get proposal for updating docs/architecture and backlog. Response of the Architect should contain changes in docs + list of tasks. If the architect has any questions, it should ask user, get answers and re-run until it has no more questions.
+
+    # Run Architect to get proposal for updating docs/architecture and backlog
+    print("[STEP 4] Running Architect to generate proposal...")
+
+    llm = LLM(LLMConfig(
+      model="gpt-4o-mini",
+      max_output_tokens=1200,
+    ))
+
+    architect_result = run_architect_with_context(architect_context, user_input, llm, log)
+
+    # Log the architect result
+    log.write_json("architect_result.json", {
+      "round_count": architect_result.round_count,
+      "questions_count": len(architect_result.questions),
+      "answers_count": len(architect_result.answers)
+    })
+
+    print(f"[OK] Architect completed after {architect_result.round_count} round(s)")
+    if architect_result.questions:
+      print(f"  - Asked {len(architect_result.questions)} questions total")
+
+    # Parse the final proposal
+    proposal_yaml = architect_result.proposal_yaml
     # TODO: Notify user about proposed changes and tasks, ask for confirmation to apply.
     # TODO: If confirmed, make a commit for these changes.
     # TODO: Gather current docs, information about architecture based on all md files also add current backlog.
