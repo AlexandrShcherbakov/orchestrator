@@ -12,6 +12,8 @@ from orchestrator.steps import Step, run_step
 from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError
 from orchestrator.tasks_io import append_problem, append_done
+from orchestrator.llm import LLM, LLMConfig
+from orchestrator.agents.architect import run_architect_bootstrap
 
 
 def parse_args() -> argparse.Namespace:
@@ -115,8 +117,36 @@ def main() -> int:
   print("[ok] project contract valid")
 
   if args.cmd == "bootstrap":
-    print("[ok] bootstrap (stub): architect/techlead would run here")
-    print("[hint] update docs/knowledge/facts.md and docs/tasks/backlog.yaml")
+    log = make_task_log_dir(repo, "BOOTSTRAP")
+    log.write_json("bootstrap_meta.json", {"repo": str(repo)})
+
+    steps: list[Step] = []
+
+    def _step_architect_bootstrap():
+      llm = LLM(LLMConfig(
+        model="gpt-4o-mini",        # временно
+        max_output_tokens=1200,
+      ))
+      # Контекст у агента минимальный: facts + постановка внутри агента
+      res = run_architect_bootstrap(llm, repo, log)
+      return {"status": "proposed", "note": "See architect_bootstrap_raw.yaml in logs."}
+
+    steps.append(Step(
+      name="architect_bootstrap",
+      actor="architect",
+      context_summary=(
+        "Input: docs/knowledge/facts.md. "
+        "Output: proposal YAML logged to logs/.../architect_bootstrap_raw.yaml. "
+        "No repo changes in this step."
+      ),
+      run=_step_architect_bootstrap,
+    ))
+
+    total = len(steps)
+    for i, s in enumerate(steps, start=1):
+      run_step(s, log, args.interactive, i, total)
+
+    print(f"[ok] bootstrap complete. logs at: {log.root}")
     return 0
   elif args.cmd == "run":
     backlog = repo / "docs" / "tasks" / "backlog.yaml"
