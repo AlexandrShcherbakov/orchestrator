@@ -35,3 +35,12 @@ def branch_exists(repo: Path, name: str) -> bool:
 
 def checkout_new_branch(repo: Path, name: str) -> None:
   _run(repo, ["checkout", "-b", name])
+
+def add_all(repo: Path) -> None:
+  _run(repo, ["add", "-A"])
+
+def commit(repo: Path, message: str) -> None:
+  _run(repo, ["commit", "-m", message])
+
+def diff_numstat(repo: Path) -> str:
+  return _run(repo, ["diff", "--numstat"])

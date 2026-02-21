@@ -6,11 +6,12 @@ from typing import Any
 
 import yaml
 
-from orchestrator.git_ops import head_sha, is_clean, branch_exists, checkout_new_branch, current_branch
+from orchestrator.git_ops import diff_numstat, head_sha, is_clean, branch_exists, checkout_new_branch, current_branch, add_all, commit
 from orchestrator.logging import make_task_log_dir
 from orchestrator.steps import Step, run_step
 from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError
+from orchestrator.tasks_io import append_problem, append_done
 
 
 def parse_args() -> argparse.Namespace:
@@ -191,9 +192,45 @@ def main() -> int:
       steps.append(make_check_step(c.name, c.cmd))
 
     total = len(steps)
+    results = []
     for i, s in enumerate(steps, start=1):
-      run_step(s, log, args.interactive, i, total)
+      r = run_step(s, log, args.interactive, i, total)
+      results.append((s.name, r))
 
+    failed = []
+    for name, r in results:
+      if name.startswith("check_") and isinstance(r, dict) and r.get("ok") is False:
+        failed.append(name)
+
+    if failed:
+      msg = "Checks failed: " + ", ".join(failed)
+      append_problem(repo, task.id, msg, blocking=True)
+      print(f"[stop] {msg} -> recorded in docs/tasks/problems.yaml")
+      return 6
+
+    numstat = diff_numstat(repo)
+    log.write_text("diff_numstat.txt", numstat)
+
+    # грубая оценка: суммируем добавленные+удалённые строки
+    added = deleted = 0
+    for line in numstat.splitlines():
+      a, d, _path = line.split("\t", 2)
+      if a.isdigit():
+        added += int(a)
+      if d.isdigit():
+        deleted += int(d)
+
+    if added + deleted > 300:
+      append_problem(repo, task.id, f"Diff too large: {added}+{deleted} lines", blocking=True)
+      print(f"[stop] diff too large ({added}+{deleted}) -> recorded in problems")
+      return 7
+
+    append_done(repo, task.id, task.title)
+
+    add_all(repo)
+    commit(repo, f"{task.id}: {task.title}")
+
+    print("[ok] committed")
     return 0
 
 if __name__ == "__main__":
