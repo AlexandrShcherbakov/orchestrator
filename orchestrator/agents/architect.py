@@ -138,31 +138,3 @@ OR
       answers=all_answers,
       round_count=round_count
     )
-
-def run_architect_bootstrap(llm: LLM, repo: Path, log: TaskLog) -> BootstrapResult:
-  """Старая функция архитектора для обратной совместимости."""
-  facts = (repo / "docs" / "knowledge" / "facts.md").read_text(encoding="utf-8")
-
-  user = f"""Project facts:
-{facts}
-
-Task:
-1) Ensure docs/tasks/backlog.yaml, done.yaml, problems.yaml exist and are coherent.
-2) Propose minimal updates to docs/architecture (if missing, create overview.md with 5-10 bullet points).
-3) If anything blocks correctness, list questions.
-
-Return YAML with keys:
-updated_files: [list of paths]
-proposed_changes:
-  - path: docs/...
-    content: |
-      full new file content
-problems: [list of questions]
-"""
-
-  out = llm.text(SYSTEM, user)
-  log.write_text("architect_bootstrap_raw.yaml", out)
-
-  # На этом шаге мы НЕ применяем изменения автоматически.
-  # Только логируем предложение. Применение сделаем в следующем шаге.
-  return BootstrapResult(updated_files=[], problems=[])

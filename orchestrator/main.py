@@ -16,7 +16,7 @@ from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError
 from orchestrator.tasks_io import append_problem, append_done
 from orchestrator.llm import LLM, LLMConfig
-from orchestrator.agents.architect import run_architect_bootstrap, create_architect_context, run_architect_with_context
+from orchestrator.agents.architect import create_architect_context, run_architect_with_context
 from orchestrator.agents.techlead import run_techlead, create_techlead_context
 
 
@@ -431,96 +431,6 @@ def main() -> int:
       log.write_text("techlead_proposal_error.txt", str(e))
       return 6
 
-    steps: list[Step] = []
-
-    def _step_architect_bootstrap():
-      llm = LLM(LLMConfig(
-        model="gpt-4o-mini",        # временно
-        max_output_tokens=1200,
-      ))
-      # Контекст у агента минимальный: facts + постановка внутри агента
-      res = run_architect_bootstrap(llm, repo, log)
-      return {"status": "proposed", "note": "See architect_bootstrap_raw.yaml in logs."}
-
-    steps.append(Step(
-      name="architect_bootstrap",
-      actor="architect",
-      context_summary=(
-        "Input: docs/knowledge/facts.md. "
-        "Output: proposal YAML logged to logs/.../architect_bootstrap_raw.yaml. "
-        "No repo changes in this step."
-      ),
-      run=_step_architect_bootstrap,
-    ))
-
-    total = len(steps)
-    for i, s in enumerate(steps, start=1):
-      run_step(s, log, args.interactive, i, total)
-
-    print(f"[ok] bootstrap complete. logs at: {log.root}")
-
-    raw = (log.root / "architect_bootstrap_raw.yaml").read_text(encoding="utf-8")
-    proposal = parse_proposal_yaml(raw)
-    validate_docs_only(repo, proposal)
-
-    log.write_json("proposal_summary.json", {
-      "files": [f.path for f in proposal.files],
-      "problems": proposal.problems,
-    })
-    print("[proposal] files:")
-    for f in proposal.files:
-      print(" ", f.path)
-    if proposal.problems:
-      print("[proposal] problems:")
-      for q in proposal.problems:
-        print(" -", q)
-
-    if proposal.problems:
-      for q in proposal.problems:
-        append_problem(repo, "BOOTSTRAP", q, blocking=True)
-      print("[stop] architect reported problems -> recorded in docs/tasks/problems.yaml")
-      return 8
-
-    choice = prompt_apply(args.interactive)
-    if choice == "skip":
-      print("[ok] skipped applying proposal")
-      return 0
-    if choice == "abort":
-      raise SystemExit(130)
-
-    if not is_clean(repo):
-      print("[error] working tree not clean")
-      return 4
-
-    bname = "bootstrap/" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    if branch_exists(repo, bname):
-      print("[error] branch exists:", bname)
-      return 5
-    checkout_new_branch(repo, bname)
-    log.write_text("bootstrap_branch.txt", bname)
-
-    written = apply_proposal(repo, proposal)
-    log.write_json("applied_files.json", {"written": written})
-
-    cfg = load_project_config(repo)
-    failed = []
-    for c in cfg.checks:
-      try:
-        res = run_cmd(repo, c.cmd)
-        log.write_text(f"bootstrap_check_{c.name}_stdout.txt", res.stdout)
-        log.write_text(f"bootstrap_check_{c.name}_stderr.txt", res.stderr)
-      except CmdError as e:
-        log.write_text(f"bootstrap_check_{c.name}_stdout.txt", e.result.stdout)
-        log.write_text(f"bootstrap_check_{c.name}_stderr.txt", e.result.stderr)
-        failed.append(c.name)
-
-    if failed:
-      append_problem(repo, "BOOTSTRAP", "Bootstrap checks failed: " + ", ".join(failed), blocking=True)
-      print("[stop] checks failed -> recorded in docs/tasks/problems.yaml")
-      return 6
-
-    add_all(repo)
-    commit(repo, "BOOTSTRAP: update docs")
     print("[ok] bootstrap committed on", current_branch(repo))
     return 0
   elif args.cmd == "run":
