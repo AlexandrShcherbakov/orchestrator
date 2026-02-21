@@ -17,6 +17,7 @@ from orchestrator.runner import run_cmd, CmdError
 from orchestrator.tasks_io import append_problem, append_done
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.agents.architect import run_architect_bootstrap, create_architect_context, run_architect_with_context
+from orchestrator.agents.techlead import run_techlead, create_techlead_context
 
 
 def parse_args() -> argparse.Namespace:
@@ -386,7 +387,19 @@ def main() -> int:
     techlead_context = gather_techlead_context(repo)
     print(f"[OK] TechLead context gathered with {len(techlead_context)} files including backlog")
 
-    # TODO: TechLeads should generate subtasks for each task if it is necessary. We require small commits (less than 300 changed lines).
+    # Run TechLead to break down tasks into subtasks
+    print("[STEP 8] Running TechLead to analyze and break down tasks...")
+    techlead_ctx = create_techlead_context(techlead_context, repo)
+
+    llm = LLM(LLMConfig(
+      model="gpt-4o-mini",
+      max_output_tokens=1200,
+    ))
+
+    techlead_proposal = run_techlead(llm, techlead_ctx, log)
+    log.write_text("techlead_proposal.yaml", techlead_proposal)
+    print("[OK] TechLead analysis complete")
+
     # TODO: TechLead only modifies backlog and architecture md files and makes a commit.
 
     steps: list[Step] = []
