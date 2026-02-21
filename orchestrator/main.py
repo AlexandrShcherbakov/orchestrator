@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 from orchestrator.git_ops import diff_numstat, head_sha, is_clean, branch_exists, checkout_new_branch, current_branch, add_all, commit
-from orchestrator.logging import make_task_log_dir
+from orchestrator.task_logging import make_task_log_dir
 from orchestrator.steps import Step, run_step
 from orchestrator.project_config import load_project_config
 from orchestrator.runner import run_cmd, CmdError

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Any
-from orchestrator.logging import TaskLog
+from orchestrator.task_logging import TaskLog
 
 
 @dataclass(frozen=True)
