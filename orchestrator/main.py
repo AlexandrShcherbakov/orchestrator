@@ -9,6 +9,8 @@ import yaml
 from orchestrator.git_ops import head_sha, is_clean, branch_exists, checkout_new_branch, current_branch
 from orchestrator.logging import make_task_log_dir
 from orchestrator.steps import Step, run_step
+from orchestrator.project_config import load_project_config
+from orchestrator.runner import run_cmd, CmdError
 
 
 def parse_args() -> argparse.Namespace:
@@ -163,6 +165,30 @@ def main() -> int:
       context_summary=f"Create and checkout branch task/{task.id}.",
       run=_create_branch
     ))
+
+    cfg = load_project_config(repo)
+    log.write_json("project_config.json", {"checks": [{"name": c.name, "cmd": c.cmd} for c in cfg.checks]})
+
+    def make_check_step(check_name: str, cmd: list[str]) -> Step:
+      def _run():
+        try:
+          res = run_cmd(repo, cmd)
+          log.write_text(f"check_{check_name}_stdout.txt", res.stdout)
+          log.write_text(f"check_{check_name}_stderr.txt", res.stderr)
+          return {"ok": True, "rc": res.returncode}
+        except CmdError as e:
+          log.write_text(f"check_{check_name}_stdout.txt", e.result.stdout)
+          log.write_text(f"check_{check_name}_stderr.txt", e.result.stderr)
+          return {"ok": False, "rc": e.result.returncode}
+      return Step(
+        name=f"check_{check_name}",
+        actor="orchestrator",
+        context_summary="Run command: " + " ".join(cmd),
+        run=_run,
+      )
+
+    for c in cfg.checks:
+      steps.append(make_check_step(c.name, c.cmd))
 
     total = len(steps)
     for i, s in enumerate(steps, start=1):
