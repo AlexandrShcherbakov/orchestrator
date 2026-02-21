@@ -17,6 +17,19 @@
       "run"
       ],
       "python": "${workspaceFolder}/.venv/Scripts/python.exe"
+    },
+    {
+      "name": "Orchestrator architect",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/orchestrator/main.py",
+      "console": "integratedTerminal",
+      "args": [
+      "--repo", ".",
+      "--interactive",
+      "bootstrap"
+      ],
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe"
     }
   ]
 }
