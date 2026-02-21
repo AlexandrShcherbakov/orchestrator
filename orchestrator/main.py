@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from orchestrator.proposals import parse_proposal_yaml, validate_docs_only
+from orchestrator.proposals import parse_proposal_yaml, validate_docs_only, validate_allowed_prefixes
 from orchestrator.apply import apply_proposal
 from orchestrator.git_ops import diff_numstat, head_sha, is_clean, branch_exists, checkout_new_branch, current_branch, add_all, commit
 from orchestrator.task_logging import make_task_log_dir
@@ -272,6 +272,38 @@ def main() -> int:
       run=_create_branch
     ))
 
+    facts = (repo / "docs" / "knowledge" / "facts.md").read_text(encoding="utf-8")
+
+    tester_yaml_holder = {"raw": ""}
+
+    def _tester_step():
+      llm = LLM(LLMConfig(model="gpt-4o-mini", max_output_tokens=1200))
+      raw = run_tester(llm, repo, task.id, task.title, task.description, facts, log)
+      tester_yaml_holder["raw"] = raw
+      return {"status": "proposed"}
+
+    steps.append(Step(
+      name="tester_generate",
+      actor="tester",
+      context_summary="Generate test proposal (allowed: tests/, docs/tests/).",
+      run=_tester_step
+    ))
+
+    def _apply_tests():
+      raw = tester_yaml_holder["raw"]
+      proposal = parse_proposal_yaml(raw)  # уже умеет strip fences
+      validate_allowed_prefixes(repo, proposal, ["tests", "docs/tests"])
+      written = apply_proposal(repo, proposal)
+      log.write_json("tester_applied.json", {"written": written})
+      return {"written": written}
+
+    steps.append(Step(
+      name="tester_apply",
+      actor="orchestrator",
+      context_summary="Apply tester proposal to repo (tests only).",
+      run=_apply_tests
+    ))
+
     cfg = load_project_config(repo)
     log.write_json("project_config.json", {"checks": [{"name": c.name, "cmd": c.cmd} for c in cfg.checks]})
 
@@ -295,6 +327,18 @@ def main() -> int:
 
     for c in cfg.checks:
       steps.append(make_check_step(c.name, c.cmd))
+
+    def _commit_tests():
+      add_all(repo)
+      commit(repo, f"{task.id}: add tests")
+      return {"committed": True}
+
+    steps.append(Step(
+      name="commit_tests",
+      actor="orchestrator",
+      context_summary="Create one commit with tests changes.",
+      run=_commit_tests
+    ))
 
     total = len(steps)
     results = []
