@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+from orchestrator.git_ops import head_sha, is_clean, branch_exists, checkout_new_branch, current_branch
+
 def parse_args() -> argparse.Namespace:
   p = argparse.ArgumentParser(prog="orchestrator")
   p.add_argument("--repo", required=True)
@@ -127,9 +129,25 @@ def main() -> int:
     print(task.description)
 
     prompt_next(args.interactive, "create task branch (dry-run)")
-    print("[dry-run] would create branch here")
+    print(f"[ok] HEAD: {head_sha(repo)}")
+    print(f"[ok] branch: {current_branch(repo)}")
 
-  return 0
+    if not is_clean(repo):
+      print("[error] working tree is not clean. Commit/stash changes first.")
+      return 4
+
+    branch_name = f"task/{task.id}"
+    print(f"[plan] create and checkout branch: {branch_name}")
+
+    prompt_next(args.interactive, "git: create+checkout branch")
+    if branch_exists(repo, branch_name):
+      print(f"[error] branch already exists: {branch_name}")
+      return 5
+
+    checkout_new_branch(repo, branch_name)
+    print(f"[ok] now on branch: {current_branch(repo)}")
+
+    return 0
 
 if __name__ == "__main__":
   raise SystemExit(main())
