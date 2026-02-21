@@ -19,6 +19,7 @@ from orchestrator.llm import LLM, LLMConfig
 from orchestrator.agents.architect import create_architect_context, run_architect_with_context
 from orchestrator.agents.techlead import run_techlead, create_techlead_context
 from orchestrator.agents.tester import run_tester
+from orchestrator.agents.developer import run_developer, create_developer_context
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
   p.add_argument("--repo", required=True)
   p.add_argument("--interactive", action="store_true")
   p.add_argument("--tester-count", type=int, default=3, help="Number of tester agents to run (default: 3)")
+  p.add_argument("--developer-count", type=int, default=3, help="Number of developer agents to run (default: 3)")
 
   sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -548,8 +550,37 @@ def main() -> int:
       return {"status": "proposed", "tester_count": tester_count}
 
     # TODO: Extend Tester contexts they ask.
-    # TODO: Get code for new tests from Testers. Apply to repo.
-    # TODO: Init X (3 by default) Developer agents with same context as testers + info about proposed tests. They should propose code changes to implement the task and make tests pass. Apply to repo.
+
+    # Init multiple Developer agents with task context + test proposals
+    developer_count = getattr(args, 'developer_count', 3)
+    developer_results = []
+
+    def _developer_step():
+      llm = LLM(LLMConfig(model="gpt-4o-mini", max_output_tokens=1200))
+
+      print(f"[Running {developer_count} developer agents...]")
+      all_results = []
+
+      # Create developer context with task info and test proposals
+      developer_ctx = create_developer_context(task_context, tester_results, repo)
+
+      for i in range(developer_count):
+        print(f"  - Running developer agent {i+1}/{developer_count}...")
+        raw = run_developer(llm, developer_ctx, log)
+        log.write_text(f"developer_{i+1}_raw.yaml", raw)
+        all_results.append(raw)
+
+      # Combine all developer results - for now just take the first non-empty one
+      # TODO: Better merging strategy for multiple developer outputs
+      final_result = ""
+      for result in all_results:
+        if result.strip():
+          final_result = result
+          break
+
+      developer_results.extend(all_results)
+      return {"status": "proposed", "developer_count": developer_count}
+
     # TODO: Run code checks. If failed, return to Testers/Developers for another iteration.
     # TODO: Run code tests. If failed, return to Testers/Developers for another iteration.
     # TODO: Init X (3 by default) Architect Reviewer agents with this context. They should ask for more context if needed.
@@ -590,6 +621,41 @@ def main() -> int:
       actor="orchestrator",
       context_summary="Apply tester proposal to repo (tests only).",
       run=_apply_tests
+    ))
+
+    steps.append(Step(
+      name="developer_generate",
+      actor="developer",
+      context_summary=f"Generate implementation proposal using {developer_count} developer agents.",
+      run=_developer_step
+    ))
+
+    def _apply_implementation():
+      # Use the first non-empty result from developer agents
+      raw = ""
+      for result in developer_results:
+        if result.strip():
+          raw = result
+          break
+
+      if not raw:
+        raise ValueError("No valid developer results found")
+
+      proposal = parse_proposal_yaml(raw)
+      # Developers can modify any files except tests - manual validation
+      for f in proposal.files:
+        if f.path.startswith("tests/") or f.path.startswith("docs/tests/"):
+          raise ValueError(f"Developer cannot modify test files: {f.path}")
+
+      written = apply_proposal(repo, proposal)
+      log.write_json("developer_applied.json", {"written": written})
+      return {"written": written}
+
+    steps.append(Step(
+      name="developer_apply",
+      actor="orchestrator",
+      context_summary="Apply developer proposal to repo (implementation only).",
+      run=_apply_implementation
     ))
 
     cfg = load_project_config(repo)
