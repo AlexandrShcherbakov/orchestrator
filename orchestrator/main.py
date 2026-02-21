@@ -33,7 +33,7 @@ def load_tasks(backlog_path: Path) -> list[Task]:
   data: list[dict[str, Any]] = yaml.safe_load(backlog_path.read_text(encoding="utf-8")) or []
   tasks: list[Task] = []
   for i, item in enumerate(data):
-    if not isinstance(item, dict[str, Any]):
+    if not isinstance(item, dict):
       raise ValueError(f"Backlog item #{i} is not a dict")
     tasks.append(Task(
       id=str(item.get("id", "")).strip(),
