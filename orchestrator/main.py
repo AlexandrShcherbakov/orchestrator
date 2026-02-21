@@ -1,5 +1,4 @@
 import argparse
-from logging import log
 from pathlib import Path
 import sys
 from dataclasses import dataclass
