@@ -108,6 +108,26 @@ def prompt_apply(interactive: bool) -> str:
     if cmd in ("apply", "skip", "abort"):
       return cmd
 
+def gather_docs_and_architecture(repo: Path) -> dict[str, str]:
+  """Собирает всю документацию и информацию об архитектуре из markdown файлов."""
+  docs_content = {}
+
+  # Ищем все markdown файлы в docs/
+  docs_dir = repo / "docs"
+  if not docs_dir.exists():
+    return docs_content
+
+  for md_file in docs_dir.rglob("*.md"):
+    try:
+      # Используем относительный путь от docs/ как ключ
+      rel_path = md_file.relative_to(docs_dir)
+      content = md_file.read_text(encoding="utf-8")
+      docs_content[str(rel_path)] = content
+    except Exception as e:
+      print(f"[warning] Could not read {md_file}: {e}")
+
+  return docs_content
+
 def main() -> int:
   args = parse_args()
   repo = Path(args.repo).expanduser().resolve()
@@ -130,6 +150,30 @@ def main() -> int:
   if args.cmd == "bootstrap":
     log = make_task_log_dir(repo, "BOOTSTRAP")
     log.write_json("bootstrap_meta.json", {"repo": str(repo)})
+
+    # Gather current docs, information about architecture based on all md files
+    print("[STEP 1] Gathering current documentation and architecture information...")
+    docs_content = gather_docs_and_architecture(repo)
+
+    # Log gathered docs for debugging
+    log.write_json("gathered_docs.json", {
+      "files": list(docs_content.keys()),
+      "total_files": len(docs_content)
+    })
+
+    print(f"[OK] Gathered {len(docs_content)} documentation files:")
+    for file_path in sorted(docs_content.keys()):
+      print(f"  - {file_path}")
+
+    # TODO: Init Architect agent with this context.
+    # TODO: Get prompt from user input about current goal and requirements.
+    # TODO: Run Architect to get proposal for updating docs/architecture and backlog. Response of the Architect should contain changes in docs + list of tasks. If the architect has any questions, it should ask user, get answers and re-run until it has no more questions.
+    # TODO: Notify user about proposed changes and tasks, ask for confirmation to apply.
+    # TODO: If confirmed, make a commit for these changes.
+    # TODO: Gather current docs, information about architecture based on all md files also add current backlog.
+    # TODO: Init TechLead agent with this context.
+    # TODO: TechLeads should generate subtasks for each task if it is necessary. We require small commits (less than 300 changed lines).
+    # TODO: TechLead only modifies backlog and architecture md files and makes a commit.
 
     steps: list[Step] = []
 
@@ -273,6 +317,22 @@ def main() -> int:
     ))
 
     facts = (repo / "docs" / "knowledge" / "facts.md").read_text(encoding="utf-8")
+
+    # TODO: Gather task info + facts.
+    # TODO: Init X (3 by default) Tester agents with this context. They should ask for more context if needed.
+    # TODO: Extend Tester contexts they ask.
+    # TODO: Get code for new tests from Testers. Apply to repo.
+    # TODO: Init X (3 by default) Developer agents with same context as testers + info about proposed tests. They should propose code changes to implement the task and make tests pass. Apply to repo.
+    # TODO: Run code checks. If failed, return to Testers/Developers for another iteration.
+    # TODO: Run code tests. If failed, return to Testers/Developers for another iteration.
+    # TODO: Init X (3 by default) Architect Reviewer agents with this context. They should ask for more context if needed.
+    # TODO: Get feedback from Architect Reviewers. If there are problems return to Testers/Developers for another iteration.
+    # TODO: Init X (3 by default) Developer Reviewer agents with this context. They should ask for more context if needed.
+    # TODO: Get feedback from Developer Reviewers. If there are problems return to Testers/Developers for another iteration.
+    # TODO: Init X (3 by default) Code style Reviewer agents with this context. They should ask for more context if needed.
+    # TODO: Get feedback from Code style Reviewers. If there are problems return to Testers/Developers for another iteration.
+    # TODO: If all good, commit with message "{task.id}: {task.title}".
+    # TODO: Start with the next ready task.
 
     tester_yaml_holder = {"raw": ""}
 
