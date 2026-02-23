@@ -19,7 +19,7 @@ from orchestrator.llm import LLM, LLMConfig
 from orchestrator.agents.architect import create_architect_context, run_architect_with_context
 from orchestrator.agents.techlead import run_techlead, create_techlead_context
 from orchestrator.agents.tester import run_tester
-from orchestrator.agents.developer import run_developer, create_developer_context
+from orchestrator.agents.developer import run_developer, create_developer_context, Developer
 
 
 def parse_args() -> argparse.Namespace:
@@ -283,6 +283,12 @@ def main() -> int:
 
   check_project_contract(repo)
   print("[ok] project contract valid")
+
+  log = make_task_log_dir(repo, "DEV")
+  dev = Developer()
+  task = "Remove tester agent file."
+  print("What task should I do?")
+  dev.execute_task(input(), log)
 
   if args.cmd == "bootstrap":
     log = make_task_log_dir(repo, "BOOTSTRAP")

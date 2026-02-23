@@ -1,10 +1,55 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any
-import yaml
-from orchestrator.llm import LLM
+from typing import Dict
+
+from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
+from orchestrator.bash_tools import cat, ls
+
+
+SYSTEM_PROMPT = """
+You are developer. You get a task from a user and need to modify code to solve it.
+Allowed responses from you:
+ls <path> - list files in a directory
+cat <path> - show file content
+apply <diff> - apply changes to files in git diff format.
+You are not allowed to use any other commands.
+Commands should we written as a single command without any comments. Do not explain your commands, just write them.
+
+Rules:
+- Be concise.
+- Focus on small, targeted changes that implement the specific functionality.
+- Consider existing code structure and patterns.
+"""
+
+class Developer:
+  def __init__(self):
+    self.llm = LLM(LLMConfig(), SYSTEM_PROMPT)
+
+  def execute_task(self, task_description: str, log: TaskLog):
+    log.write_text("developer_task.txt", task_description)
+    context = {
+      "TASK": task_description,
+    }
+    while True:
+      response = self.llm.text(context, "Solve the task", commit_message=False)
+      if response.startswith("ls "):
+        path = response[3:].strip()
+        context[f"LS_OUTPUT for {path}"] = ls(path)
+        log.write_text("developer_ls.txt", f"ls {path}\n{context[f'LS_OUTPUT for {path}']}")
+      elif response.startswith("cat "):
+        path = response[4:].strip()
+        context[f"FILE for {path}"] = cat(path)
+        log.write_text("developer_cat.txt", f"cat {path}\n{context[f'FILE for {path}']}")
+      elif response.startswith("apply "):
+        diff = response[6:].strip()
+        log.write_text("developer_apply.txt", f"apply\n{diff}")
+        break
+      else:
+        log.write_text("developer_response.txt", response)
+        break
+
 
 @dataclass(frozen=True)
 class DeveloperContext:
