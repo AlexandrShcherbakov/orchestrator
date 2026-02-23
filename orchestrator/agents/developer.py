@@ -75,7 +75,7 @@ These outputs are reliable and must be used as the sole source of truth.
 
 class Developer:
   def __init__(self):
-    self.llm = LLM(LLMConfig(), SYSTEM_PROMPT)
+    self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
 
   def execute_task(self, task_description: str, log: TaskLog):
     log.write_text("developer_task.txt", task_description)
