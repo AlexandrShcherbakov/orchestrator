@@ -45,7 +45,7 @@ def commit(repo: Path, message: str) -> None:
 def diff_numstat(repo: Path) -> str:
   return _run(repo, ["diff", "--numstat"])
 
-def apply_diff(repo: Path, diff_content: str) -> None:
+def apply_diff(repo: Path, diff_content: str) -> str | None:
   p = subprocess.run(
     ["git", "apply", "--whitespace=fix"],
     cwd=str(repo),
@@ -54,4 +54,5 @@ def apply_diff(repo: Path, diff_content: str) -> None:
     capture_output=True,
   )
   if p.returncode != 0:
-    raise GitError((p.stderr or p.stdout or "").strip() or "git apply failed")
+    return p.stderr or p.stdout
+  return None

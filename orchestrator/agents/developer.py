@@ -84,18 +84,24 @@ class Developer:
       "TASK": task_description,
     }
     step = 0
+    current_request = "Solve the task"
     while True:
-      response = self.llm.text(context, "Solve the task", commit_message=False)
+      if step > 100:
+        log.write_text("developer_final.txt", "Exceeded maximum number of steps without producing a valid implementation.")
+        break
+      response = self.llm.text(context, current_request)
+      log.write_text(f"developer_{step}.txt", f"LLM Response:\n{response}")
+      step += 1
       if response.startswith("ls "):
         path = response[3:].strip()
-        current_request = ls(path)
-        context[f"LS_OUTPUT {path}"] = current_request
-        log.write_text(f"developer_{step}.txt", f"ls {path}\n{current_request}")
+        command_result = ls(path)
+        context[f"LS_OUTPUT {path}"] = command_result
+        log.write_text(f"developer_{step}.txt", f"ls {path}\n{command_result}")
       elif response.startswith("cat "):
         path = response[4:].strip()
-        current_request = cat(path)
-        context[f"CAT_OUTPUT {path}"] = current_request
-        log.write_text(f"developer_{step}.txt", f"cat {path}\n{current_request}")
+        command_result = cat(path)
+        context[f"CAT_OUTPUT {path}"] = command_result
+        log.write_text(f"developer_{step}.txt", f"cat {path}\n{command_result}")
       elif response.startswith("tree "):
         parts = response[5:].strip().split()
         if len(parts) != 2:
@@ -107,18 +113,23 @@ class Developer:
         except ValueError:
           log.write_text(f"developer_{step}.txt", f"Invalid depth in tree command: {response}")
           break
-        current_request = tree(path, depth)
-        context[f"TREE_OUTPUT {path} {depth}"] = current_request
-        log.write_text(f"developer_{step}.txt", f"tree {path} {depth}\n{current_request}")
+        command_result = tree(path, depth)
+        context[f"TREE_OUTPUT {path} {depth}"] = command_result
+        log.write_text(f"developer_{step}.txt", f"tree {path} {depth}\n{command_result}")
       elif response.startswith("apply\n"):
         diff = response[6:].strip()
         # Everything before \n\ndiff is the commit message, everything after is the diff content
         commit_message, _, diff_content = diff.partition("\n\ndiff")
         commit_message = commit_message.strip()
         diff_content = "diff" + diff_content  # add back the "diff" prefix
+        if apply_result := apply_diff(Path("."), diff_content):
+          log.write_text(f"developer_{step}.txt", f"Failed to apply diff:\n{apply_result}")
+          self.llm.confirm_chat()
+          current_request = f"Failed to apply the proposed changes. Git output:\n{apply_result}\n\nPlease fix the diff and try again."
+          step += 1
+          continue
         context["COMMIT_MESSAGE"] = commit_message
         context["DIFF_CONTENT"] = diff_content
-        apply_diff(Path("."), diff_content)
         log.write_text(f"developer_{step}.txt", response)
         break
       else:

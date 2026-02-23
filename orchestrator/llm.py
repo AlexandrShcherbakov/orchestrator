@@ -21,16 +21,16 @@ class LLM:
       raise RuntimeError("OPENAI_API_KEY is not set")
     self.client = OpenAI(api_key=api_key)
     self.cfg = cfg
-    self.chat = [{"role": "system", "content": system}]
+    self.chat: list[dict[str, str]] = []
+    self.system = {"role": "system", "content": system}
+    self.last_request_response_pair = None
 
-  def text(self, context: dict[str, str], user: str, commit_message: bool) -> str:
-    user_msg = "\n".join(f"{k}:\n{v}" for k, v in context.items())
-    user_msg += f"\n\n{user}"
-    if commit_message:
-      self.chat.append({"role": "user", "content": user_msg})
-      input_chain = self.chat
-    else:
-      input_chain = self.chat + [{"role": "user", "content": user_msg}]
+  def text(self, context: dict[str, str], user: str) -> str:
+    config_msg = "\n".join(f"{k}:\n{v}" for k, v in context.items())
+    input_chain = [
+      self.system,
+      {"role": "user", "content": config_msg},
+    ] + self.chat + [{"role": "user", "content": user}]
     # Responses API
     resp = self.client.responses.create(
       model=self.cfg.model,
@@ -41,9 +41,10 @@ class LLM:
     output_message = getattr(resp, "output_text", "") or ""
     if output_message == "":
       print("Warning: LLM response is empty")
-    if commit_message:
-      self.chat.append({"role": "assistant", "content": output_message})
+    self.last_request_response_pair = (user, output_message)
     return output_message
 
-  def confirm_assistant(self, new_assistant: str):
-    self.chat.append({"role": "assistant", "content": new_assistant})
+  def confirm_chat(self):
+    self.chat.append({"role": "user", "content": self.last_request_response_pair[0]})
+    self.chat.append({"role": "assistant", "content": self.last_request_response_pair[1]})
+    self.last_request_response_pair = None
