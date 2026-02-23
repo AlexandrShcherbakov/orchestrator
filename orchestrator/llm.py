@@ -39,6 +39,8 @@ class LLM:
     )
     # SDK convenience field: output_text
     output_message = getattr(resp, "output_text", "") or ""
+    if output_message == "":
+      print("Warning: LLM response is empty")
     if commit_message:
       self.chat.append({"role": "assistant", "content": output_message})
     return output_message
