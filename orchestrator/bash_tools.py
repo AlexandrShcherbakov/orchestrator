@@ -4,6 +4,8 @@ EXCLUDED_DIRS = ['.git', '.venv', 'logs', '__pycache__', '*.pyc', '*.egg-info']
 
 def ls(path: str) -> str:
   # if path is not a subdirectory of the current directory, return <FORBIDDEN>
+  if os.path.isfile(path):
+    return path
   if not os.path.isdir(path):
     return "<FORBIDDEN>"
 

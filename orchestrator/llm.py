@@ -10,7 +10,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class LLMConfig:
-  model: str = "gpt-4o-mini"  # поменяем позже вместе с архитектором
+  model: str = "gpt-5-mini"  # поменяем позже вместе с архитектором
   max_output_tokens: int = 1200
 
 
@@ -36,7 +36,6 @@ class LLM:
       model=self.cfg.model,
       input=input_chain,
       max_output_tokens=self.cfg.max_output_tokens,
-      temperature=0.1,
     )
     # SDK convenience field: output_text
     output_message = getattr(resp, "output_text", "") or ""

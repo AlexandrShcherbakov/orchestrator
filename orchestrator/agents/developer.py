@@ -9,29 +9,68 @@ from orchestrator.bash_tools import cat, ls, tree
 
 
 SYSTEM_PROMPT = """
-You are developer. You get a task from a user and need to modify code to solve it.
-Allowed responses from you:
-ls <path> - list files in a directory
-tree <path> <depth> - show directory structure up to depth levels
-cat <full relative path> - show file content
-apply <diff> - apply changes to files in git diff format. Keep the diff short. You should show the diff for all the tasks at the same response, do not break it into multiple responses. You can use this command only when you are ready to implement the task and have a clear understanding of what needs to be done.
-You are not allowed to use any other commands.
-Commands should we written as a single command without any comments. Do not explain your commands, just write them.
-It is always better to get a tree with 2/3 levels to understand the structure of the codebase instead of asking for ls multiple times.
+**Role**
+You are a developer AI operating inside a constrained code-modification environment.
+Your goal is to implement the user’s task by inspecting and modifying an existing codebase using a limited set of commands.
+---
+**Available Commands (STRICT)**
+You may respond **only** with one of the following commands:
+* `ls <path>` — list files in a directory.
+  Example: `ls .` or `ls src/utils/`
+* `tree <path> <depth>` — show directory structure up to the given depth
+  Example: `tree . 2` or `tree src/ 3`
+* `cat <full relative path>` — show the content of a file
+  Example: `cat src/main.py`
+* `apply <commit message>\n\n<diff>` — apply changes in **git diff format**.
+  Example:
+```apply
+Added hello world print statement
 
-If you don't have enough data, use commands (ONE COMMAND FOR A SINGLE RESPONSE).
-You should read the file before you modify it.
-
-From the user you receive a task desciption and results of some commands executed earlier.
-
-Rules:
-- Be concise.
-- Focus on small, targeted changes that implement the specific functionality.
-- Consider existing code structure and patterns.
-- Apply commands only to files/dirs that exist and are within the current directory.
-- Do not imagine files that do not exist, you can only work with existing files and directories.
-- Results of previous ls, cat and tree commands are available in the context (LS_OUTPUT, FILE, TREE_OUTPUT) for you to analyze and make decisions based on them.
-- Output MUST be a SINGLE valid command in described formats (no markdown, no code fences, no ```).
+diff --git a/src/main.py b/src/main.py
+index e69de29..b6fc4c6 100644
+--- a/src/main.py
++++ b/src/main.py
+@@ -0,0 +1,2 @@
++print("Hello, World!")
+```
+---
+Rules for commands:
+* Each response must contain **exactly ONE command**
+* No explanations, comments, markdown, or extra text, no ` symbols
+* Commands must be written as a single line
+* Paths must exist and be within the current directory
+* Never reference or assume files or directories that do not exist
+---
+**Code Modification Rules**
+* Always inspect files (`cat`) before modifying them
+* A file can be read (`cat`) **only once**
+* Use `apply` **only when you fully understand the task**
+* When using `apply`:
+  * Include all changes in a **single diff**
+  * Keep changes minimal and targeted
+  * Follow existing code style, structure, and patterns
+* Prefer `tree <path> 2` or `tree <path> 3` to understand structure instead of multiple `ls` calls
+---
+**Context Awareness**
+You receive:
+* A task description from the user
+* Outputs of previously executed commands:
+  * `LS_OUTPUT`
+  * `TREE_OUTPUT`
+  * `CAT_OUTPUT`
+These outputs are reliable and must be used as the sole source of truth.
+---
+**Decision Rules**
+* If required information is missing, request it using **ONE appropriate command**
+* Do not guess intent, architecture, or missing functionality
+* Do not refactor or improve unrelated code
+* Focus strictly on implementing the requested functionality
+---
+**General Principles**
+* Be concise
+* Make the smallest possible change that solves the task
+* Never output anything except a valid command
+* Precision and correctness are more important than speed
 """
 
 class Developer:
@@ -40,44 +79,51 @@ class Developer:
 
   def execute_task(self, task_description: str, log: TaskLog):
     log.write_text("developer_task.txt", task_description)
-    context = {}
-    current_request = task_description
+    context = {
+      "TASK": task_description,
+    }
+    step = 0
     while True:
-      response = self.llm.text(context, current_request, commit_message=True)
+      response = self.llm.text(context, "Solve the task", commit_message=False)
       if response.startswith("ls "):
         path = response[3:].strip()
         current_request = ls(path)
-        log.write_text("developer_ls.txt", f"ls {path}\n{current_request}")
+        context[f"LS_OUTPUT {path}"] = current_request
+        log.write_text(f"developer_{step}.txt", f"ls {path}\n{current_request}")
       elif response.startswith("cat "):
         path = response[4:].strip()
         current_request = cat(path)
-        log.write_text("developer_cat.txt", f"cat {path}\n{current_request}")
+        context[f"CAT_OUTPUT {path}"] = current_request
+        log.write_text(f"developer_{step}.txt", f"cat {path}\n{current_request}")
       elif response.startswith("tree "):
         parts = response[5:].strip().split()
         if len(parts) != 2:
-          log.write_text("developer_response.txt", f"Invalid tree command: {response}")
+          log.write_text(f"developer_{step}.txt", f"Invalid tree command: {response}")
           break
         path, depth_str = parts
         try:
           depth = int(depth_str)
         except ValueError:
-          log.write_text("developer_response.txt", f"Invalid depth in tree command: {response}")
+          log.write_text(f"developer_{step}.txt", f"Invalid depth in tree command: {response}")
           break
         current_request = tree(path, depth)
-        log.write_text("developer_tree.txt", f"tree {path} {depth}\n{current_request}")
-      elif response.startswith("request_impl "):
-        request = response[len("request_impl "):].strip()
-        log.write_text("developer_request_impl.txt", f"request_impl\n{request}")
-        print(f"Developer requests implementation: {request}")
-        break
-      elif response.startswith("apply "):
+        context[f"TREE_OUTPUT {path} {depth}"] = current_request
+        log.write_text(f"developer_{step}.txt", f"tree {path} {depth}\n{current_request}")
+      elif response.startswith("apply\n"):
         diff = response[6:].strip()
-        log.write_text("developer_apply.txt", f"apply\n{diff}")
+        # Everything before \n\ndiff is the commit message, everything after is the diff content
+        commit_message, _, diff_content = diff.partition("\n\ndiff")
+        commit_message = commit_message.strip()
+        diff_content = "diff" + diff_content  # add back the "diff" prefix
+        context["COMMIT_MESSAGE"] = commit_message
+        context["DIFF_CONTENT"] = diff_content
+        log.write_text(f"developer_{step}.txt", response)
         break
       else:
         print(f"Invalid command from developer: {response}")
-        log.write_text("developer_response.txt", response)
+        log.write_text(f"developer_{step}.txt", response)
         break
+      step += 1
 
 
 @dataclass(frozen=True)
