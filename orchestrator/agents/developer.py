@@ -6,6 +6,7 @@ from typing import Dict
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
 from orchestrator.bash_tools import cat, ls, tree
+from orchestrator.git_ops import apply_diff
 
 
 SYSTEM_PROMPT = """
@@ -117,6 +118,7 @@ class Developer:
         diff_content = "diff" + diff_content  # add back the "diff" prefix
         context["COMMIT_MESSAGE"] = commit_message
         context["DIFF_CONTENT"] = diff_content
+        apply_diff(Path("."), diff_content)
         log.write_text(f"developer_{step}.txt", response)
         break
       else:
