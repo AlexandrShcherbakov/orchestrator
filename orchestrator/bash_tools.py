@@ -17,7 +17,17 @@ def ls(path: str) -> str:
     # Handle cases where paths are on different drives or other path issues
     return "<FORBIDDEN>"
 
-  return "\n".join(os.listdir(path))
+  items = []
+  for item in os.listdir(path):
+    item_path = os.path.join(path, item)
+    if os.path.isdir(item_path):
+      items.append(f"{item}/")
+    elif os.path.isfile(item_path):
+      items.append(f"{item}")
+    else:
+      items.append(f"{item} (unknown)")
+
+  return "\n".join(items)
 
 def cat(path: str) -> str:
   # if path is not a file in the current directory, return <FORBIDDEN>
@@ -38,3 +48,28 @@ def cat(path: str) -> str:
 
   with open(path, "r", encoding="utf-8") as f:
     return f.read()
+
+def tree(path: str, depth: int) -> str:
+  if depth < 0:
+    return ""
+  if not os.path.isdir(path):
+    return "<FORBIDDEN>"
+
+  try:
+    abs_path = os.path.abspath(path)
+    abs_cwd = os.path.abspath(os.getcwd())
+    if not abs_path.startswith(abs_cwd + os.sep) and abs_path != abs_cwd:
+      return "<FORBIDDEN>"
+  except (ValueError, OSError):
+    return "<FORBIDDEN>"
+
+  result = []
+  for root, dirs, files in os.walk(path):
+    level = root.replace(path, "").count(os.sep)
+    if level > depth:
+      continue
+    indent = " " * 4 * level
+    result.append(f"{indent}{os.path.basename(root)}/")
+    for f in files:
+      result.append(f"{indent}    {f}")
+  return "\n".join(result)

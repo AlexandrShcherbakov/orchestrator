@@ -5,22 +5,33 @@ from typing import Dict
 
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
-from orchestrator.bash_tools import cat, ls
+from orchestrator.bash_tools import cat, ls, tree
 
 
 SYSTEM_PROMPT = """
 You are developer. You get a task from a user and need to modify code to solve it.
 Allowed responses from you:
 ls <path> - list files in a directory
-cat <path> - show file content
-apply <diff> - apply changes to files in git diff format.
+tree <path> <depth> - show directory structure up to depth levels
+cat <full relative path> - show file content
+apply <diff> - apply changes to files in git diff format. Keep the diff short. You should show the diff for all the tasks at the same response, do not break it into multiple responses. You can use this command only when you are ready to implement the task and have a clear understanding of what needs to be done.
+request_impl <detailed description> - if for some reason you need a new command to solve the task, you can request it from the user with a detailed description. You should use this command only if you are sure that existing commands are not enough to solve the task.
 You are not allowed to use any other commands.
 Commands should we written as a single command without any comments. Do not explain your commands, just write them.
+It is always better to get a tree with 2/3 levels to understand the structure of the codebase instead of asking for ls multiple times.
+
+If you don't have enough data, use commands (ONE COMMAND FOR A SINGLE RESPONSE).
+
+From the user you receive a task desciption and results of some commands executed earlier.
 
 Rules:
 - Be concise.
 - Focus on small, targeted changes that implement the specific functionality.
 - Consider existing code structure and patterns.
+- Apply commands only to files/dirs that exist and are within the current directory.
+- Do not imagine files that do not exist, you can only work with existing files and directories.
+- Results of previous ls, cat and tree commands are available in the context (LS_OUTPUT, FILE, TREE_OUTPUT) for you to analyze and make decisions based on them.
+- Output MUST be a SINGLE valid command in described formats (no markdown, no code fences, no ```).
 """
 
 class Developer:
@@ -29,24 +40,42 @@ class Developer:
 
   def execute_task(self, task_description: str, log: TaskLog):
     log.write_text("developer_task.txt", task_description)
-    context = {
-      "TASK": task_description,
-    }
+    context = {}
+    current_request = task_description
     while True:
-      response = self.llm.text(context, "Solve the task", commit_message=False)
+      response = self.llm.text(context, current_request, commit_message=True)
       if response.startswith("ls "):
         path = response[3:].strip()
-        context[f"LS_OUTPUT for {path}"] = ls(path)
-        log.write_text("developer_ls.txt", f"ls {path}\n{context[f'LS_OUTPUT for {path}']}")
+        current_request = ls(path)
+        log.write_text("developer_ls.txt", f"ls {path}\n{current_request}")
       elif response.startswith("cat "):
         path = response[4:].strip()
-        context[f"FILE for {path}"] = cat(path)
-        log.write_text("developer_cat.txt", f"cat {path}\n{context[f'FILE for {path}']}")
+        current_request = cat(path)
+        log.write_text("developer_cat.txt", f"cat {path}\n{current_request}")
+      elif response.startswith("tree "):
+        parts = response[5:].strip().split()
+        if len(parts) != 2:
+          log.write_text("developer_response.txt", f"Invalid tree command: {response}")
+          break
+        path, depth_str = parts
+        try:
+          depth = int(depth_str)
+        except ValueError:
+          log.write_text("developer_response.txt", f"Invalid depth in tree command: {response}")
+          break
+        current_request = tree(path, depth)
+        log.write_text("developer_tree.txt", f"tree {path} {depth}\n{current_request}")
+      elif response.startswith("request_impl "):
+        request = response[len("request_impl "):].strip()
+        log.write_text("developer_request_impl.txt", f"request_impl\n{request}")
+        print(f"Developer requests implementation: {request}")
+        break
       elif response.startswith("apply "):
         diff = response[6:].strip()
         log.write_text("developer_apply.txt", f"apply\n{diff}")
         break
       else:
+        print(f"Invalid command from developer: {response}")
         log.write_text("developer_response.txt", response)
         break
 
