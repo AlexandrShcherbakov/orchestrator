@@ -15,12 +15,12 @@ ls <path> - list files in a directory
 tree <path> <depth> - show directory structure up to depth levels
 cat <full relative path> - show file content
 apply <diff> - apply changes to files in git diff format. Keep the diff short. You should show the diff for all the tasks at the same response, do not break it into multiple responses. You can use this command only when you are ready to implement the task and have a clear understanding of what needs to be done.
-request_impl <detailed description> - if for some reason you need a new command to solve the task, you can request it from the user with a detailed description. You should use this command only if you are sure that existing commands are not enough to solve the task.
 You are not allowed to use any other commands.
 Commands should we written as a single command without any comments. Do not explain your commands, just write them.
 It is always better to get a tree with 2/3 levels to understand the structure of the codebase instead of asking for ls multiple times.
 
 If you don't have enough data, use commands (ONE COMMAND FOR A SINGLE RESPONSE).
+You should read the file before you modify it.
 
 From the user you receive a task desciption and results of some commands executed earlier.
 

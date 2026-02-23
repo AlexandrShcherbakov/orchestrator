@@ -36,6 +36,7 @@ class LLM:
       model=self.cfg.model,
       input=input_chain,
       max_output_tokens=self.cfg.max_output_tokens,
+      temperature=0.1,
     )
     # SDK convenience field: output_text
     output_message = getattr(resp, "output_text", "") or ""
