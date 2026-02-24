@@ -7,7 +7,7 @@ from typing import Dict
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
 from orchestrator.bash_tools import cat, ls, tree
-from orchestrator.git_ops import apply_diff, apply_diff_for_file
+from orchestrator.git_ops import check_apply_diff_for_file
 from orchestrator.agents.developer_prompt import SYSTEM_PROMPT
 
 
@@ -15,11 +15,7 @@ class Developer:
   def __init__(self):
     self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
 
-  def execute_task(self, repo: Path, task_description: str, log: TaskLog):
-    log.write_text("developer_task.txt", task_description)
-    context = {
-      "TASK": task_description,
-    }
+  def execute_task(self, repo: Path, context: dict[str, str], log: TaskLog):
     step = -1
     current_request = "Solve the task"
     while True:
@@ -38,7 +34,7 @@ class Developer:
         continue
       if response.get("status", "") == "complete":
         for change in response["changes"]:
-          apply_result = apply_diff_for_file(repo, change["path"], change["patch"])
+          apply_result = check_apply_diff_for_file(repo, change["path"], change["patch"])
           if apply_result:
             log.write_text(f"developer_{step}.txt", f"Failed to apply diff for {change['path']}:\n{apply_result}")
             current_request = f"Failed to apply diff for {change['path']}:\n{apply_result}\nPlease fix the patch and ensure it can be applied cleanly."

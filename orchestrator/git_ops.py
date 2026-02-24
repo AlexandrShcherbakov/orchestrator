@@ -69,3 +69,16 @@ def apply_diff_for_file(repo: Path, file: str, diff_content: str) -> str | None:
     return p.stderr or p.stdout
   return None
 
+def check_apply_diff_for_file(repo: Path, file: str, diff_content: str) -> str | None:
+  p = subprocess.run(
+    ["git", "apply", "--check", "--whitespace=fix", f"--include={file}"],
+    cwd=str(repo),
+    input=diff_content,
+    text=True,
+    capture_output=True,
+  )
+  if p.returncode != 0:
+    return p.stderr or p.stdout
+  return None
+
+
