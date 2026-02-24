@@ -286,9 +286,8 @@ def main() -> int:
 
   log = make_task_log_dir(repo, "DEV")
   dev = Developer()
-  task = "Remove tester agent file."
   print("What task should I do?")
-  dev.execute_task(input(), log)
+  dev.execute_task(repo, input(), log)
 
   if args.cmd == "bootstrap":
     log = make_task_log_dir(repo, "BOOTSTRAP")

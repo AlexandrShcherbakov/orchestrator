@@ -23,14 +23,14 @@ class LLM:
     self.cfg = cfg
     self.chat: list[dict[str, str]] = []
     self.system = {"role": "system", "content": system}
-    self.last_request_response_pair = None
 
   def text(self, context: dict[str, str], user: str) -> str:
     config_msg = "\n".join(f"{k}:\n{v}" for k, v in context.items())
+    self.chat.append({"role": "user", "content": user})
     input_chain = [
       self.system,
       {"role": "user", "content": config_msg},
-    ] + self.chat + [{"role": "user", "content": user}]
+    ] + self.chat
     # Responses API
     resp = self.client.responses.create(
       model=self.cfg.model,
@@ -41,10 +41,8 @@ class LLM:
     output_message = getattr(resp, "output_text", "") or ""
     if output_message == "":
       print("Warning: LLM response is empty")
-    self.last_request_response_pair = (user, output_message)
+    self.chat.append({"role": "assistant", "content": output_message})
     return output_message
 
-  def confirm_chat(self):
-    self.chat.append({"role": "user", "content": self.last_request_response_pair[0]})
-    self.chat.append({"role": "assistant", "content": self.last_request_response_pair[1]})
-    self.last_request_response_pair = None
+  def clear_chat(self):
+    self.chat = []
