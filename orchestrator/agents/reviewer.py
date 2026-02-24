@@ -22,7 +22,7 @@ class Reviewer:
     )
 
     while True:
-      if context.step > 200:
+      if context.step > 40:
         context.write_text("reviewer_final.txt", "Exceeded maximum number of steps without producing a valid review.")
         break
       try:

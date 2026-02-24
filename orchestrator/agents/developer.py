@@ -17,7 +17,7 @@ class Developer:
     current_request = "Solve the task" if not self.task_started else "Check review comments and update implementation if needed"
     self.task_started = True
     while True:
-      if context.step > 200:
+      if context.step > 40:
         context.write_text("developer_final.txt", "Exceeded maximum number of steps without producing a valid implementation.")
         break
       try:

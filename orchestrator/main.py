@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -44,6 +45,8 @@ def main() -> int:
   if not git_dir.exists():
     print(f"[error] not a git repo (no .git): {repo}", file=sys.stderr)
     return 2
+
+  os.chdir(repo)
 
   print(f"[ok] repo: {repo}")
 
