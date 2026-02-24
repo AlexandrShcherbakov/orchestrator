@@ -80,14 +80,14 @@ class Developer:
 
 @dataclass(frozen=True)
 class DeveloperContext:
-  """Контекст для работы разработчика с задачей и тестами."""
-  task_context: Dict[str, str]  # Имя файла -> содержимое
-  test_proposals: list[str]  # Предложения тестов
+  """Context for the developer working on the task and tests."""
+  task_context: Dict[str, str]  # Filename -> content
+  test_proposals: list[str]  # Test proposals
   repo_path: str
   total_files: int
 
 def create_developer_context(task_context: Dict[str, str], test_proposals: list[str], repo: Path) -> DeveloperContext:
-  """Создает контекст разработчика."""
+  """Creates developer context."""
   return DeveloperContext(
     task_context=task_context,
     test_proposals=test_proposals,
@@ -97,7 +97,7 @@ def create_developer_context(task_context: Dict[str, str], test_proposals: list[
 
 @dataclass(frozen=True)
 class DeveloperResult:
-  """Результат работы разработчика."""
+  """Result of the developer's work."""
   proposal_yaml: str
   implementation_ready: bool
 
@@ -112,9 +112,9 @@ Rules:
 """
 
 def run_developer(llm: LLM, developer_context: DeveloperContext, log: TaskLog) -> str:
-  """Запускает разработчика для реализации задачи."""
+  """Runs the developer to implement the task."""
 
-  # Формируем контекст для разработчика
+  # Build context for the developer
   context_text = "Task context:\n\n"
   for filename, content in developer_context.task_context.items():
     context_text += f"=== {filename} ===\n{content}\n\n"
@@ -141,7 +141,7 @@ Generate YAML with proposed_changes containing implementation."""
 
   response = llm.text(SYSTEM, user_prompt)
 
-  # Логируем запрос и ответ
+  # Log the request and response
   log.write_text("developer_request.txt", user_prompt)
   log.write_text("developer_response.txt", response)
 
