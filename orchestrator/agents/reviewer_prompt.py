@@ -43,6 +43,7 @@ Allowed commands:
 * ls <path>
 * tree <path> <depth>
 * cat <full relative path>
+* grep <path> <pattern>
 
 Rules for commands:
 * No explanations, comments, markdown, or extra text

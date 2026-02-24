@@ -4,7 +4,7 @@ from pathlib import Path
 
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
-from orchestrator.bash_tools import cat, ls, tree
+from orchestrator.bash_tools import cat, ls, tree, grep
 from orchestrator.agents.reviewer_prompt import SYSTEM_PROMPT
 from orchestrator.execution_context import Context
 
@@ -104,9 +104,22 @@ class Reviewer:
             context.prompt_context[f"TREE_OUTPUT {path} {depth}"] = command_result
             context.write_text("reviewer.txt", f"tree {path} {depth}\n{command_result}")
             self.llm.clear_chat()
+          elif command.startswith("grep "):
+            rest = command[5:].strip()
+            if not rest:
+              context.write_text("reviewer.txt", f"Invalid grep command: {command}")
+              current_request = f"Invalid grep command: {command}. Please use the format: grep <path> <pattern>."
+              break
+            parts = rest.split(maxsplit=1)
+            path = parts[0]
+            pattern = parts[1] if len(parts) > 1 else ""
+            command_result = grep(path, pattern)
+            context.prompt_context[f"GREP_OUTPUT {path} {pattern}"] = command_result
+            context.write_text("reviewer.txt", f"grep {path} {pattern}\n{command_result}")
+            self.llm.clear_chat()
           else:
             context.write_text("reviewer.txt", f"Invalid command: {command}")
-            current_request = f"Invalid command: {command}. Please use only the allowed commands: ls, cat, tree."
+            current_request = f"Invalid command: {command}. Please use only the allowed commands: ls, cat, tree, grep."
             break
       else:
         context.write_text("reviewer.txt", f"Incorrect response status: {status}")
