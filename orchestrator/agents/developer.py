@@ -84,28 +84,3 @@ class DeveloperContext:
   test_proposals: list[str]  # Test proposals
   repo_path: str
   total_files: int
-
-def create_developer_context(task_context: Dict[str, str], test_proposals: list[str], repo: Path) -> DeveloperContext:
-  """Creates developer context."""
-  return DeveloperContext(
-    task_context=task_context,
-    test_proposals=test_proposals,
-    repo_path=str(repo),
-    total_files=len(task_context)
-  )
-
-@dataclass(frozen=True)
-class DeveloperResult:
-  """Result of the developer's work."""
-  proposal_yaml: str
-  implementation_ready: bool
-
-SYSTEM = """You are Developer.
-Rules:
-- Be concise.
-- Output MUST be valid YAML (no markdown, no code fences, no ```).
-- You can propose changes to any files except tests/ and docs/tests/.
-- Implement the task requirements to make tests pass.
-- Focus on small, targeted changes that implement the specific functionality.
-- Consider existing code structure and patterns.
-"""
