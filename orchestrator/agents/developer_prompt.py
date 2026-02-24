@@ -15,7 +15,6 @@ Either
   "changes": [
     {
       "path": string,
-      "patch_format": "unified_diff",
       "patch": string
     }
   ]
@@ -32,35 +31,7 @@ Rules for JSON output:
 * Each file modification MUST be represented as a SEPARATE diff in `changes`
 * Do NOT merge multiple files into a single diff
 * If no code changes are required, `changes` MUST be an empty array
-* patch MUST be a valid unified diff that can be applied with `git apply`
-* patch MUST be in the format:
-```
-diff --git a/path/file.py b/path/file.py
-index 1111111..2222222 100644
---- a/path/file.py
-+++ b/path/file.py
-@@ -1,3 +1,4 @@
- line1
--line2
-+line2_modified
- line3
-```
-* patch is a JSON string. It MUST contain real newline characters between diff lines; JSON escaping is handled by the JSON encoder.
-
-Patch encoding rule (MANDATORY)
-patch MUST be a single JSON string containing the unified diff with real newline characters (LF, \n) between lines.
-Do NOT replace newlines with the two-character sequence \\ + n. (i.e. do NOT double-escape).
-patch MUST end with a trailing newline (\n).
-
-Unified diff validity (MANDATORY)
-Each patch MUST be a valid “git apply” unified diff and MUST start with:
-diff --git a/<path> b/<path>
---- a/<path> and +++ b/<path> MUST match the same <path> value as in diff --git.
-No extra commentary lines before diff --git or after the last diff line.
-
-Path rule
-changes[i].path MUST equal <path> used in the diff headers.
-Exactly one file per patch (already stated, but keep it).
+* patch MUST be a new version of the file that could be overwritten to the file path
 
 ---
 

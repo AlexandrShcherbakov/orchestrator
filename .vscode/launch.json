@@ -25,9 +25,7 @@
       "program": "${workspaceFolder}/orchestrator/main.py",
       "console": "integratedTerminal",
       "args": [
-      "--repo", ".",
-      "--interactive",
-      "bootstrap"
+      "--repo", "../orchestrator_test/orchestrator"
       ],
       "python": "${workspaceFolder}/.venv/Scripts/python.exe"
     }

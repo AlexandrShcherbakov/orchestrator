@@ -29,6 +29,7 @@ class Reviewer:
         raw_response = self.llm.text(context, current_request)
         response = json.loads(raw_response)
         log.write_json(f"reviewer_{step}.txt", {"LLM Response": response})
+        step += 1
       except json.JSONDecodeError as e:
         log.write_text(f"reviewer_{step}.txt", f"Failed to parse LLM response as JSON: {e}\nResponse was:\n{raw_response}")
         current_request = f"Failed to parse your response as JSON: {e}\nPlease ensure your response strictly follows the JSON schema and contains no extra text."

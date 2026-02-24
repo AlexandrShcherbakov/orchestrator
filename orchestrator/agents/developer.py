@@ -14,10 +14,12 @@ from orchestrator.agents.developer_prompt import SYSTEM_PROMPT
 class Developer:
   def __init__(self):
     self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
+    self.task_started = False
 
   def execute_task(self, repo: Path, context: dict[str, str], log: TaskLog):
     step = -1
-    current_request = "Solve the task"
+    current_request = "Solve the task" if not self.task_started else "Check review comments and update implementation if needed"
+    self.task_started = True
     while True:
       step += 1
       if step > 100:
@@ -33,15 +35,10 @@ class Developer:
         current_request = f"Failed to parse your response as JSON: {e}\nPlease ensure your response strictly follows the JSON schema and contains no extra text."
         continue
       if response.get("status", "") == "complete":
-        for change in response["changes"]:
-          apply_result = check_apply_diff_for_file(repo, change["path"], change["patch"])
-          if apply_result:
-            log.write_text(f"developer_{step}.txt", f"Failed to apply diff for {change['path']}:\n{apply_result}")
-            current_request = f"Failed to apply diff for {change['path']}:\n{apply_result}\nPlease fix the patch and ensure it can be applied cleanly."
-            break
-        else:
           context["COMMIT_MESSAGE"] = response["commit_message"]
-          context["DIFF_CONTENT"] = json.dumps(response["changes"])
+          context["NEW_CONTENT"] = json.dumps(response["changes"])
+          if "REVIEW_SUMMARY" in context:
+              del context["REVIEW_SUMMARY"]
           break
       elif response.get("status", "") == "need_more_info":
         for command in response["commands"]:

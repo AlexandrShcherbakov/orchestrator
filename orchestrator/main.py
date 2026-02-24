@@ -57,6 +57,9 @@ def main() -> int:
   dev.execute_task(repo, context, log)
   rev = Reviewer()
   rev.review_task(repo, context, log)
+  while context.get("REVIEW_SUMMARY", None):
+    dev.execute_task(repo, context, log)
+    rev.review_task(repo, context, log)
 
   return 0
 
