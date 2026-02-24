@@ -1,8 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Dict
 
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.bash_tools import cat, ls, tree
@@ -75,12 +73,3 @@ class Developer:
       else:
         print(f"Incorrect response status: {response.get('status')}")
         current_request = f"Invalid response status: {response.get('status')}. Add 'status' field with value 'complete' or 'need_more_info'."
-
-
-@dataclass(frozen=True)
-class DeveloperContext:
-  """Context for the developer working on the task and tests."""
-  task_context: Dict[str, str]  # Filename -> content
-  test_proposals: list[str]  # Test proposals
-  repo_path: str
-  total_files: int
