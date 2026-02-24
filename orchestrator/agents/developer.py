@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict
 
 from orchestrator.llm import LLM, LLMConfig
-from orchestrator.task_logging import TaskLog
 from orchestrator.bash_tools import cat, ls, tree
 from orchestrator.execution_context import Context
 from orchestrator.agents.developer_prompt import SYSTEM_PROMPT
@@ -110,39 +109,3 @@ Rules:
 - Focus on small, targeted changes that implement the specific functionality.
 - Consider existing code structure and patterns.
 """
-
-def run_developer(llm: LLM, developer_context: DeveloperContext, log: TaskLog) -> str:
-  """Runs the developer to implement the task."""
-
-  # Build context for the developer
-  context_text = "Task context:\n\n"
-  for filename, content in developer_context.task_context.items():
-    context_text += f"=== {filename} ===\n{content}\n\n"
-
-  test_proposals_text = "Test proposals:\n\n"
-  for i, proposal in enumerate(developer_context.test_proposals, 1):
-    test_proposals_text += f"=== Test Proposal {i} ===\n{proposal}\n\n"
-
-  user_prompt = f"""Implement the task to make the proposed tests pass.
-
-{context_text}
-
-{test_proposals_text}
-
-Generate a proposal to implement the required functionality.
-
-Requirements:
-- Analyze the task and test requirements
-- Implement minimal code changes to make tests pass
-- Follow existing code patterns and structure
-- Do not modify test files
-
-Generate YAML with proposed_changes containing implementation."""
-
-  response = llm.text(SYSTEM, user_prompt)
-
-  # Log the request and response
-  log.write_text("developer_request.txt", user_prompt)
-  log.write_text("developer_response.txt", response)
-
-  return response
