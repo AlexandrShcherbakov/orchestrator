@@ -4,8 +4,10 @@ import sys
 
 
 from orchestrator.task_logging import make_task_log_dir
+from orchestrator.execution_context import Context
 from orchestrator.agents.developer import Developer
 from orchestrator.agents.reviewer import Reviewer
+from orchestrator.git_ops import add_all, commit
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,17 +51,26 @@ def main() -> int:
   print("[ok] project contract valid")
 
   log = make_task_log_dir(repo, "DEV")
+  context = Context(log)
   dev = Developer()
   print("What task should I do?")
-  context = {
+  context.prompt_context = {
     "TASK": input(),
   }
-  dev.execute_task(repo, context, log)
+  dev.execute_task(repo, context)
   rev = Reviewer()
-  rev.review_task(repo, context, log)
-  while context.get("REVIEW_SUMMARY", None):
-    dev.execute_task(repo, context, log)
-    rev.review_task(repo, context, log)
+  rev.review_task(repo, context)
+  while not context.review_finished:
+    dev.execute_task(repo, context)
+    rev.review_task(repo, context)
+
+  for change in context.new_content:
+    path = repo / change["path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(change["patch"])
+
+  add_all(repo)
+  commit(repo, context.commit_message)
 
   return 0
 

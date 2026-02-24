@@ -6,13 +6,14 @@ from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
 from orchestrator.bash_tools import cat, ls, tree
 from orchestrator.agents.reviewer_prompt import SYSTEM_PROMPT
+from orchestrator.execution_context import Context
 
 
 class Reviewer:
   def __init__(self):
     self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
 
-  def review_task(self, repo: Path, context: dict[str, str], log: TaskLog):
+  def review_task(self, repo: Path, context: Context):
 
     step = -1
     current_request = (
@@ -21,17 +22,16 @@ class Reviewer:
     )
 
     while True:
-      step += 1
-      if step > 100:
-        log.write_text("reviewer_final.txt", "Exceeded maximum number of steps without producing a valid review.")
+      if context.step > 200:
+        context.write_text("reviewer_final.txt", "Exceeded maximum number of steps without producing a valid review.")
         break
       try:
-        raw_response = self.llm.text(context, current_request)
+        raw_response = self.llm.text(context.prompt_context, current_request)
         response = json.loads(raw_response)
-        log.write_json(f"reviewer_{step}.txt", {"LLM Response": response})
+        context.write_json("reviewer.txt", {"LLM Response": response})
         step += 1
       except json.JSONDecodeError as e:
-        log.write_text(f"reviewer_{step}.txt", f"Failed to parse LLM response as JSON: {e}\nResponse was:\n{raw_response}")
+        context.write_text("reviewer.txt", f"Failed to parse LLM response as JSON: {e}\nResponse was:\n{raw_response}")
         current_request = f"Failed to parse your response as JSON: {e}\nPlease ensure your response strictly follows the JSON schema and contains no extra text."
         continue
       status = response.get("status", "")
@@ -60,52 +60,54 @@ class Reviewer:
               invalid = f"start_line and end_line must be integers in comment at index {i}"
               break
         if invalid:
-          log.write_text(f"reviewer_{step}.txt", invalid)
+          context.write_text("reviewer.txt", invalid)
           current_request = f"{invalid}. Please return a JSON object strictly following the schema."
           continue
-        log.write_json("reviewer_final.json", response)
-        summary = [f"Reviewer finished with {len(comments)} comment(s)."]
+        context.write_json("reviewer_final.json", response)
+        summary = []
         for c in comments:
           if c["severity"] == "error":
             summary.append(f"{c['path']}:{c['start_line']}-{c['end_line']} [{c['severity']}]: {c['comment']}")
-        context["REVIEW_SUMMARY"] = "\n".join(summary)
-        log.write_text("reviewer_final.txt", "\n".join(summary))
+        context.prompt_context["REVIEW_SUMMARY"] = "\n".join(summary)
+        context.write_text("reviewer_final.txt", "\n".join(summary))
+        if not summary:
+          context.review_finished = True
         break
       elif status == "need_more_info":
         for command in response.get("commands", []):
           if command.startswith("ls "):
             path = command[3:].strip()
             command_result = ls(path)
-            context[f"LS_OUTPUT {path}"] = command_result
-            log.write_text(f"reviewer_{step}.txt", f"ls {path}\n{command_result}")
+            context.prompt_context[f"LS_OUTPUT {path}"] = command_result
+            context.write_text("reviewer.txt", f"ls {path}\n{command_result}")
             self.llm.clear_chat()
           elif command.startswith("cat "):
             path = command[4:].strip()
             command_result = cat(path)
-            context[f"CAT_OUTPUT {path}"] = command_result
-            log.write_text(f"reviewer_{step}.txt", f"cat {path}\n{command_result}")
+            context.prompt_context[f"CAT_OUTPUT {path}"] = command_result
+            context.write_text("reviewer.txt", f"cat {path}\n{command_result}")
             self.llm.clear_chat()
           elif command.startswith("tree "):
             parts = command[5:].strip().split()
             if len(parts) != 2:
-              log.write_text(f"reviewer_{step}.txt", f"Invalid tree command: {command}")
+              context.write_text("reviewer.txt", f"Invalid tree command: {command}")
               current_request = f"Invalid tree command: {command}. Please use the format: tree <path> <depth>."
               break
             path, depth_str = parts
             try:
               depth = int(depth_str)
             except ValueError:
-              log.write_text(f"reviewer_{step}.txt", f"Invalid depth in tree command: {command}")
+              context.write_text("reviewer.txt", f"Invalid depth in tree command: {command}")
               current_request = f"Invalid depth in tree command: {command}. Depth must be an integer."
               break
             command_result = tree(path, depth)
-            context[f"TREE_OUTPUT {path} {depth}"] = command_result
-            log.write_text(f"reviewer_{step}.txt", f"tree {path} {depth}\n{command_result}")
+            context.prompt_context[f"TREE_OUTPUT {path} {depth}"] = command_result
+            context.write_text("reviewer.txt", f"tree {path} {depth}\n{command_result}")
             self.llm.clear_chat()
           else:
-            log.write_text(f"reviewer_{step}.txt", f"Invalid command: {command}")
+            context.write_text("reviewer.txt", f"Invalid command: {command}")
             current_request = f"Invalid command: {command}. Please use only the allowed commands: ls, cat, tree."
             break
       else:
-        log.write_text(f"reviewer_{step}.txt", f"Incorrect response status: {status}")
+        context.write_text("reviewer.txt", f"Incorrect response status: {status}")
         current_request = f"Invalid response status: {status}. Add 'status' field with value 'complete' or 'need_more_info'."

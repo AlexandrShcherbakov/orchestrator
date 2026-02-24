@@ -7,7 +7,7 @@ from typing import Dict
 from orchestrator.llm import LLM, LLMConfig
 from orchestrator.task_logging import TaskLog
 from orchestrator.bash_tools import cat, ls, tree
-from orchestrator.git_ops import check_apply_diff_for_file
+from orchestrator.execution_context import Context
 from orchestrator.agents.developer_prompt import SYSTEM_PROMPT
 
 
@@ -16,63 +16,61 @@ class Developer:
     self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
     self.task_started = False
 
-  def execute_task(self, repo: Path, context: dict[str, str], log: TaskLog):
-    step = -1
+  def execute_task(self, repo: Path, context: Context):
     current_request = "Solve the task" if not self.task_started else "Check review comments and update implementation if needed"
     self.task_started = True
     while True:
-      step += 1
-      if step > 100:
-        log.write_text("developer_final.txt", "Exceeded maximum number of steps without producing a valid implementation.")
+      if context.step > 200:
+        context.write_text("developer_final.txt", "Exceeded maximum number of steps without producing a valid implementation.")
         break
       try:
-        raw_response = self.llm.text(context, current_request)
+        raw_response = self.llm.text(context.prompt_context, current_request)
         response = json.loads(raw_response)
-        log.write_json(f"developer_{step}.txt", {"LLM Response": response})
-        step += 1
+        context.write_json(f"developer.txt", {"LLM Response": response})
       except json.JSONDecodeError as e:
-        log.write_text(f"developer_{step}.txt", f"Failed to parse LLM response as JSON: {e}\nResponse was:\n{raw_response}")
+        context.write_text(f"developer.txt", f"Failed to parse LLM response as JSON: {e}\nResponse was:\n{raw_response}")
         current_request = f"Failed to parse your response as JSON: {e}\nPlease ensure your response strictly follows the JSON schema and contains no extra text."
         continue
       if response.get("status", "") == "complete":
-          context["COMMIT_MESSAGE"] = response["commit_message"]
-          context["NEW_CONTENT"] = json.dumps(response["changes"])
-          if "REVIEW_SUMMARY" in context:
-              del context["REVIEW_SUMMARY"]
+          context.prompt_context["COMMIT_MESSAGE"] = response["commit_message"]
+          context.prompt_context["NEW_CONTENT"] = json.dumps(response["changes"])
+          context.set_commit_candidate(response["commit_message"], response["changes"])
+          if "REVIEW_SUMMARY" in context.prompt_context:
+              del context.prompt_context["REVIEW_SUMMARY"]
           break
       elif response.get("status", "") == "need_more_info":
         for command in response["commands"]:
           if command.startswith("ls "):
             path = command[3:].strip()
             command_result = ls(path)
-            context[f"LS_OUTPUT {path}"] = command_result
-            log.write_text(f"developer_{step}.txt", f"ls {path}\n{command_result}")
+            context.prompt_context[f"LS_OUTPUT {path}"] = command_result
+            context.write_text(f"developer.txt", f"ls {path}\n{command_result}")
             self.llm.clear_chat()
           elif command.startswith("cat "):
             path = command[4:].strip()
             command_result = cat(path)
-            context[f"CAT_OUTPUT {path}"] = command_result
-            log.write_text(f"developer_{step}.txt", f"cat {path}\n{command_result}")
+            context.prompt_context[f"CAT_OUTPUT {path}"] = command_result
+            context.write_text(f"developer.txt", f"cat {path}\n{command_result}")
             self.llm.clear_chat()
           elif command.startswith("tree "):
             parts = command[5:].strip().split()
             if len(parts) != 2:
-              log.write_text(f"developer_{step}.txt", f"Invalid tree command: {command}")
+              context.write_text(f"developer.txt", f"Invalid tree command: {command}")
               current_request = f"Invalid tree command: {command}. Please use the format: tree <path> <depth>."
               break
             path, depth_str = parts
             try:
               depth = int(depth_str)
             except ValueError:
-              log.write_text(f"developer_{step}.txt", f"Invalid depth in tree command: {command}")
+              context.write_text(f"developer.txt", f"Invalid depth in tree command: {command}")
               current_request = f"Invalid depth in tree command: {command}. Depth must be an integer."
               break
             command_result = tree(path, depth)
-            context[f"TREE_OUTPUT {path} {depth}"] = command_result
-            log.write_text(f"developer_{step}.txt", f"tree {path} {depth}\n{command_result}")
+            context.prompt_context[f"TREE_OUTPUT {path} {depth}"] = command_result
+            context.write_text(f"developer.txt", f"tree {path} {depth}\n{command_result}")
             self.llm.clear_chat()
           else:
-            log.write_text(f"developer_{step}.txt", f"Invalid command: {command}")
+            context.write_text(f"developer.txt", f"Invalid command: {command}")
             current_request = f"Invalid command: {command}. Please use only the allowed commands: ls, cat, tree."
             break
       else:
