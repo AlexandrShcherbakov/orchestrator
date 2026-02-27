@@ -1,139 +1,164 @@
 import os
+import os
+from pathlib import Path
+from .runner import run_cmd, CmdError
 
 EXCLUDED_DIRS = ['.git', '.venv', 'logs', '__pycache__', '*.pyc', '*.egg-info']
 
+def _is_within_cwd(path: str) -> bool:
+  try:
+    abs_path = os.path.realpath(path)
+    abs_cwd = os.path.realpath(os.getcwd())
+    return abs_path.startswith(abs_cwd + os.sep) or abs_path == abs_cwd
+  except (ValueError, OSError):
+    return False
+
 def ls(path: str) -> str:
-  # if path is not a subdirectory of the current directory, return <FORBIDDEN>
+  # if path is a file, return path
   if os.path.isfile(path):
     return path
   if not os.path.isdir(path):
     return "<FORBIDDEN>"
 
-  try:
-    # Convert both paths to real paths to handle symlinks, relative paths and drive issues
-    abs_path = os.path.realpath(path)
-    abs_cwd = os.path.realpath(os.getcwd())
-
-    # Check if the path is within the current directory
-    if not abs_path.startswith(abs_cwd + os.sep) and abs_path != abs_cwd:
-      return "<FORBIDDEN>"
-  except (ValueError, OSError):
-    # Handle cases where paths are on different drives or other path issues
+  if not _is_within_cwd(path):
     return "<FORBIDDEN>"
 
+  try:
+    res = run_cmd(Path(os.getcwd()), ["ls", "-A", "-p", "-1", path])
+    lines = [l for l in res.stdout.splitlines()]
+  except CmdError as e:
+    # no access or other ls error
+    return ""
+
   items = []
-  for item in os.listdir(path):
-    item_path = os.path.join(path, item)
+  for item in lines:
+    item_clean = item.rstrip('/')
+    item_path = os.path.join(path, item_clean)
     if any(excluded in item_path for excluded in EXCLUDED_DIRS):
       continue
-    if os.path.isdir(item_path):
-      items.append(f"{item}/")
-    elif os.path.isfile(item_path):
-      items.append(f"{item}")
-    else:
-      items.append(f"{item} (unknown)")
-
+    items.append(item)
   return "\n".join(items)
 
 def cat(path: str) -> str:
-  # if path is not a file in the current directory, return <FORBIDDEN>
   if not os.path.isfile(path):
     return "<FORBIDDEN>"
-
-  try:
-    # Convert both paths to real paths to handle symlinks, relative paths and drive issues
-    abs_path = os.path.realpath(path)
-    abs_cwd = os.path.realpath(os.getcwd())
-
-    # Check if the path is within the current directory
-    if not abs_path.startswith(abs_cwd + os.sep) and abs_path != abs_cwd:
-      return "<FORBIDDEN>"
-  except (ValueError, OSError):
-    # Handle cases where paths are on different drives or other path issues
+  if not _is_within_cwd(path):
     return "<FORBIDDEN>"
-
-  with open(path, "r", encoding="utf-8") as f:
-    return f.read()
+  try:
+    res = run_cmd(Path(os.getcwd()), ["cat", path])
+    return res.stdout
+  except CmdError:
+    return ""
 
 def tree(path: str, depth: int) -> str:
   if depth < 0:
     return ""
   if not os.path.isdir(path):
     return "<FORBIDDEN>"
-
-  try:
-    abs_path = os.path.realpath(path)
-    abs_cwd = os.path.realpath(os.getcwd())
-    if not abs_path.startswith(abs_cwd + os.sep) and abs_path != abs_cwd:
-      return "<FORBIDDEN>"
-  except (ValueError, OSError):
+  if not _is_within_cwd(path):
     return "<FORBIDDEN>"
 
-  result = []
-  for root, dirs, files in os.walk(path):
-    dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
-    level = root.replace(path, "").count(os.sep)
+  # use find to enumerate entries, then build a similar tree output
+  try:
+    res = run_cmd(Path(os.getcwd()), ["find", path, "-print"])
+    paths = [p for p in res.stdout.splitlines()]
+  except CmdError:
+    return ""
+
+  # normalize and sort
+  root = Path(path)
+  entries = [Path(p) for p in paths]
+  entries.sort()
+
+  result_lines = []
+  # build directory-wise
+  dirs_seen = set()
+  for p in entries:
+    try:
+      rel = p.relative_to(root)
+    except Exception:
+      continue
+    # skip the root itself (will be handled below)
+    # filter directories by exact name and files by substring match as before
+    if p.is_dir():
+      name = p.name
+      if name in EXCLUDED_DIRS:
+        continue
+    else:
+      if any(excluded in p.name for excluded in EXCLUDED_DIRS):
+        continue
+
+    # determine parent dir to print its header if not already
+    parent = p if p.is_dir() else p.parent
+    if parent not in dirs_seen:
+      # compute level for parent
+      if parent == root:
+        parent_level = 0
+      else:
+        try:
+          rel_parent = parent.relative_to(root)
+          parent_level = len(rel_parent.parts)
+        except Exception:
+          parent_level = 0
+      if parent == root:
+        basename = os.path.basename(str(root))
+      else:
+        basename = parent.name
+      indent = " " * 4 * parent_level
+      result_lines.append(f"{indent}{basename}/")
+      dirs_seen.add(parent)
+
+    if p.is_dir():
+      continue
+    # file entry
+    if p.parent == root:
+      file_level = 0
+    else:
+      try:
+        rel_parent = p.parent.relative_to(root)
+        file_level = len(rel_parent.parts)
+      except Exception:
+        file_level = 0
+    indent = " " * 4 * file_level
+    result_lines.append(f"{indent}    {p.name}")
+
+  # Now filter out entries deeper than depth
+  filtered = []
+  for line in result_lines:
+    # count leading spaces to determine level
+    spaces = len(line) - len(line.lstrip(' '))
+    level = spaces // 4
     if level > depth:
       continue
-    indent = " " * 4 * level
-    result.append(f"{indent}{os.path.basename(root)}/")
-    for f in files:
-      if any(excluded in f for excluded in EXCLUDED_DIRS):
-        continue
-      result.append(f"{indent}    {f}")
-  return "\n".join(result)
+    filtered.append(line)
 
+  return "\n".join(filtered)
 
 def grep(path: str, pattern: str) -> str:
-  """Search for pattern in a file or recursively in a directory.
-
-  Returns lines matching the pattern in the format:
-    <relative_or_full_path>:<line_number>:<line>
-
-  If path is not within the repository or does not exist, returns "<FORBIDDEN>".
-  """
   if not path:
     return "<FORBIDDEN>"
-
-  try:
-    abs_path = os.path.realpath(path)
-    abs_cwd = os.path.realpath(os.getcwd())
-    if not abs_path.startswith(abs_cwd + os.sep) and abs_path != abs_cwd:
-      return "<FORBIDDEN>"
-  except (ValueError, OSError):
+  if not _is_within_cwd(path):
     return "<FORBIDDEN>"
 
-  matches = []
-  # If it's a file, search that file only
-  if os.path.isfile(path):
-    try:
-      with open(path, "r", encoding="utf-8", errors="ignore") as f:
-        for i, line in enumerate(f, start=1):
-          if pattern in line:
-            matches.append(f"{path}:{i}:{line.rstrip()}")
-    except (OSError, IOError):
-      # unreadable file -> return empty result
+  # prepare exclude args
+  exclude_args = []
+  for ex in EXCLUDED_DIRS:
+    if '*' in ex or '?' in ex:
+      exclude_args += ["--exclude", ex]
+    else:
+      exclude_args += ["--exclude-dir", ex]
+
+  try:
+    if os.path.isfile(path):
+      cmd = ["grep", "-n", "-I", "--"] + [pattern, path]
+    elif os.path.isdir(path):
+      cmd = ["grep", "-R", "-n", "-I"] + exclude_args + ["--"] + [pattern, path]
+    else:
+      return "<FORBIDDEN>"
+    res = run_cmd(Path(os.getcwd()), cmd)
+    return res.stdout
+  except CmdError as e:
+    # grep exit code 1 == no matches
+    if hasattr(e, "result") and e.result.returncode == 1:
       return ""
-    return "\n".join(matches)
-
-  # If it's a directory, walk recursively
-  if os.path.isdir(path):
-    for root, dirs, files in os.walk(path):
-      dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
-      for fname in files:
-        if any(excluded in fname for excluded in EXCLUDED_DIRS):
-          continue
-        fpath = os.path.join(root, fname)
-        try:
-          with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-            for i, line in enumerate(f, start=1):
-              if pattern in line:
-                # use relative path for readability
-                rel = os.path.relpath(fpath)
-                matches.append(f"{rel}:{i}:{line.rstrip()}")
-        except (OSError, IOError):
-          # ignore unreadable files
-          continue
-    return "\n".join(matches)
-
-  return "<FORBIDDEN>"
+    return ""
