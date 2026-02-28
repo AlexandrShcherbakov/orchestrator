@@ -15,7 +15,7 @@ class LLMConfig:
 
 
 class LLM:
-  def __init__(self, cfg: LLMConfig, system: str):
+  def __init__(self, cfg: LLMConfig, system: str, json_schema: object = None):
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
       raise RuntimeError("OPENAI_API_KEY is not set")
@@ -23,6 +23,7 @@ class LLM:
     self.cfg = cfg
     self.chat: list[dict[str, str]] = []
     self.system = {"role": "system", "content": system}
+    self.json_schema = json_schema
 
   def text(self, context: dict[str, str], user: str) -> str:
     config_msg = "\n".join(f"{k}:\n{v}" for k, v in context.items())
@@ -36,6 +37,14 @@ class LLM:
       model=self.cfg.model,
       input=input_chain,
       max_output_tokens=self.cfg.max_output_tokens,
+      text={
+        "format": {
+          "type": "json_schema",
+          "name": "changeProposal",
+          "schema": self.json_schema,
+          "strict": True,
+        } if self.json_schema else {"type": "text"},
+      },
     )
     # SDK convenience field: output_text
     output_message = getattr(resp, "output_text", "") or ""

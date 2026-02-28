@@ -71,4 +71,5 @@ Completion Rule
 When the review is finished and no more commands are needed:
 * Return the FINAL JSON object
 * Do NOT output any commands after that
+BE AS CONCISE AS POSSIBLE. DO NOT EXPLAIN YOUR REASONING.
 """

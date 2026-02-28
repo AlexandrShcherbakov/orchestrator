@@ -67,10 +67,17 @@ def main() -> int:
     dev.execute_task(repo, context)
     rev.review_task(repo, context)
 
-  for change in context.new_content:
-    path = repo / change["path"]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(change["patch"])
+  hunks_by_file = {}
+  for h in context.new_content:
+    hunks_by_file.setdefault(h["path"], []).append(h)
+  for path, hunks in hunks_by_file.items():
+    sorted_hunks = sorted(hunks, key=lambda h: h["old_start"], reverse=True)
+    file_text = (repo / path).read_text().splitlines()
+    for h in sorted_hunks:
+      before = file_text[:h["old_start"]]
+      after = file_text[h["old_start"] + h["old_len"]:]
+      file_text = before + h["lines"] + after
+    (repo / path).write_text("\n".join(file_text))
 
   add_all(repo)
   commit(repo, context.commit_message)

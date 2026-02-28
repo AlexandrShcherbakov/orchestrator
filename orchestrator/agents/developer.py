@@ -6,11 +6,12 @@ from orchestrator.llm import LLM, LLMConfig
 from orchestrator.bash_tools import cat, ls, tree, grep
 from orchestrator.execution_context import Context
 from orchestrator.agents.developer_prompt import SYSTEM_PROMPT
+from orchestrator.agents.developer_schema import JSON_SCHEMA
 
 
 class Developer:
   def __init__(self):
-    self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT)
+    self.llm = LLM(LLMConfig(max_output_tokens=10000), SYSTEM_PROMPT, json_schema=JSON_SCHEMA)
     self.task_started = False
 
   def execute_task(self, repo: Path, context: Context):
@@ -30,8 +31,8 @@ class Developer:
         continue
       if response.get("status", "") == "complete":
           context.prompt_context["COMMIT_MESSAGE"] = response["commit_message"]
-          context.prompt_context["NEW_CONTENT"] = json.dumps(response["changes"])
-          context.set_commit_candidate(response["commit_message"], response["changes"])
+          context.prompt_context["HUNKS"] = json.dumps(response["hunks"])
+          context.set_commit_candidate(response["commit_message"], response["hunks"])
           if "REVIEW_SUMMARY" in context.prompt_context:
               del context.prompt_context["REVIEW_SUMMARY"]
           break
